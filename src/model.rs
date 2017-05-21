@@ -1,5 +1,4 @@
 use std::str;
-use std::iter::IntoIterator;
 use nom::IError;
 use error::ParsingError;
 use parser;
@@ -16,15 +15,19 @@ pub struct Bibtex {
 
 impl Bibtex {
     pub fn new(entries: Vec<Entry>) -> Self {
-        Self{ entries }
+        Self { entries }
     }
 
 
-    pub fn parse(bibtex: &str) -> Result<Self, ParsingError>  {
+    pub fn parse(bibtex: &str) -> Result<Self, ParsingError> {
         match parser::bibtex(bibtex.as_bytes()).to_full_result() {
             Ok(v) => Ok(v),
-            Err(e) => Err(convert_nom_ierror(e))
+            Err(e) => Err(convert_nom_ierror(e)),
         }
+    }
+
+    pub fn entries(&self) -> &Vec<Entry> {
+        &self.entries
     }
 }
 
@@ -34,16 +37,6 @@ impl<'a> TryFrom<&'a str> for Bibtex {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Bibtex::parse(value)
-    }
-}
-
-/// Create an iterator which will iterate over bibtex entries.
-impl IntoIterator for Bibtex {
-    type Item = Entry;
-    type IntoIter = ::std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.entries.into_iter()
     }
 }
 
@@ -89,6 +82,10 @@ impl BibliographyEntry {
             tags,
         }
     }
+
+    pub fn tags(&self) -> &Vec<(String, String)> {
+        &self.tags
+    }
 }
 
 /// Convert str to a ```BibliographyEntry```.
@@ -103,19 +100,9 @@ impl<'a> TryFrom<&'a str> for BibliographyEntry {
                     Ok(entry)
                 }
                 unreachable!();
-            },
+            }
             Err(e) => Err(handle_nom_ierror),
         }
-    }
-}
-
-/// Create an iterator which will iterate over bibtex tags.
-impl IntoIterator for BibliographyEntry {
-    type Item = (String, String);
-    type IntoIter = ::std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.tags.into_iter()
     }
 }
 
