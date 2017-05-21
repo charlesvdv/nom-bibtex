@@ -1,4 +1,5 @@
 # nom-bibtex
+[![Build Status](https://travis-ci.org/charlesvdv/nom-bibtex.svg?branch=master)](https://travis-ci.org/charlesvdv/nom-bibtex)
 
 A nearly feature complete *BibTeX* parser using [nom](https://github.com/Geal/nom).
 
