@@ -18,7 +18,7 @@ impl Bibtex {
         Self { entries }
     }
 
-
+    /// Create a new Bibtex instance from a *BibTeX* file content.
     pub fn parse(bibtex: &str) -> Result<Self, ParsingError> {
         match parser::bibtex(bibtex.as_bytes()).to_full_result() {
             Ok(v) => Ok(v),
@@ -26,6 +26,7 @@ impl Bibtex {
         }
     }
 
+    /// Get all the *BibTeX* entries.
     pub fn entries(&self) -> &Vec<Entry> {
         &self.entries
     }
@@ -83,6 +84,10 @@ impl BibliographyEntry {
         }
     }
 
+    /// Get the tags of a bibliography entry.
+    ///
+    /// Tags are the characteristics of the bibliography such as
+    /// *author*, *title*, *year*, ...
     pub fn tags(&self) -> &Vec<(String, String)> {
         &self.tags
     }
