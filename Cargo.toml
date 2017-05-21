@@ -1,0 +1,15 @@
+[package]
+name = "nom-bibtex"
+version = "0.1.0"
+authors = ["Charles Vandevoorde <charles.vandevoorde@hotmail.be>"]
+
+[lib]
+name = "nom_bibtex"
+
+[dependencies]
+nom = "3.0.*"
+quick-error = "1.2.*"
+
+[features]
+default = []
+nightly = []
