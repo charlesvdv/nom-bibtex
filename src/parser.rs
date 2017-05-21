@@ -39,6 +39,7 @@ fn entry_with_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], Entry> {
     match entry_type.to_lowercase().as_ref() {
         "comment" => type_comment(input),
         "string" => variable(input),
+        "preamble" => preamble(input),
         _ => bibliography_entry(input),
     }
 }
@@ -55,7 +56,7 @@ named!(type_comment<Entry>, do_parse!(
 /// @Preamble { my preamble }
 named!(preamble<Entry>, do_parse!(
     entry_type >>
-    preamble: map_res!(inside_backet, str::from_utf8) >>
+    preamble: map!(map_res!(inside_backet, str::from_utf8), str::trim) >>
     (Entry::Preamble(preamble.into()))
 ));
 
