@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use std::str;
-use nom::{alphanumeric, IResult};
+use nom::{alpha, alphanumeric, IResult};
 use model::{Bibtex, Entry, BibliographyEntry};
 
 /// Parse a complete bibtex file.
@@ -26,8 +26,7 @@ named!(pub entry<Entry>,
                 peek!(char!('@')) >>
                 entry: entry_with_type >>
                 (entry)
-            ) |
-            do_parse!(
+            ) | do_parse!(
                 comment: no_type_comment >>
                 (Entry::Comment(comment))
             )
@@ -64,12 +63,46 @@ named!(preamble<Entry>, do_parse!(
 ));
 
 /// Handle a string variable from the bibtex format:
-/// @String {key = "value"} or @String {key = {value}}
+/// @String (key = "value") or @String {key = "value"}
 named!(variable<Entry>, do_parse!(
     entry_type >>
-    key_val: flat_map!(inside_backet, key_value_pair) >>
+    key_val: flat_map!(variable_delimiter, variable_key_value_pair) >>
     (Entry::Variable(key_val.0, key_val.1))
 ));
+
+/// String variable can be delimited by brackets or parenthesis.
+named!(variable_delimiter,
+    ws!(
+        alt!(
+           delimited!(
+               char!('{'),
+               take_until!("}"),
+               char!('}')
+           ) | delimited!(
+               char!('('),
+               take_until!(")"),
+               char!(')')
+           )
+        )
+    )
+);
+
+/// Parse key value pair which has the form:
+/// key="value"
+named!(variable_key_value_pair<(&str, &str)>,
+    separated_pair!(
+        // Key
+        map_res!(call!(alpha), str::from_utf8),
+        // Delimiter
+        ws!(char!('=')),
+        // Value
+        map_res!(delimited!(
+            char!('"'),
+            take_until!("\""),
+            char!('"')
+        ), str::from_utf8)
+    )
+);
 
 /// Handle a bibliography entry of the format:
 /// @entry_type { citation_key,
@@ -122,7 +155,14 @@ named!(entry_type<&str>,
     delimited!(
         char!('@'),
         map_res!(ws!(alphanumeric), str::from_utf8),
-        peek!(char!('{'))
+        peek!(
+            alt!(
+                char!('{') |
+                // Handling for variable string.
+                char!('(')
+            )
+        )
+
     )
 );
 
@@ -215,6 +255,10 @@ mod tests {
     #[test]
     fn test_variable() {
         assert_eq!(variable(b"@string{key=\"value\"}"),
+                   IResult::Done(&b""[..],
+                                 Entry::Variable("key", "value")));
+
+        assert_eq!(variable(b"@string( key=\"value\" )"),
                    IResult::Done(&b""[..],
                                  Entry::Variable("key", "value")));
     }
