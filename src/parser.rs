@@ -27,7 +27,10 @@ named!(pub entry<Entry>,
                 entry: entry_with_type >>
                 (entry)
             ) |
-            map!(no_type_comment, |s: &str| Entry::Comment(s.into()))
+            do_parse!(
+                comment: no_type_comment >>
+                (Entry::Comment(comment))
+            )
         )
     )
 );
@@ -49,7 +52,7 @@ fn entry_with_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], Entry> {
 named!(type_comment<Entry>, do_parse!(
     entry_type >>
     comment: map_res!(inside_backet, str::from_utf8) >>
-    (Entry::Comment(comment.into()))
+    (Entry::Comment(comment))
 ));
 
 /// Handle a preamble of the format:
@@ -57,7 +60,7 @@ named!(type_comment<Entry>, do_parse!(
 named!(preamble<Entry>, do_parse!(
     entry_type >>
     preamble: map!(map_res!(inside_backet, str::from_utf8), str::trim) >>
-    (Entry::Preamble(preamble.into()))
+    (Entry::Preamble(preamble))
 ));
 
 /// Handle a string variable from the bibtex format:
@@ -65,7 +68,7 @@ named!(preamble<Entry>, do_parse!(
 named!(variable<Entry>, do_parse!(
     entry_type >>
     key_val: flat_map!(inside_backet, key_value_pair) >>
-    (Entry::Variable(key_val.0.into(), key_val.1.into()))
+    (Entry::Variable(key_val.0, key_val.1))
 ));
 
 /// Handle a bibliography entry of the format:
@@ -77,10 +80,7 @@ named!(pub bibliography_entry<Entry>, do_parse!(
     entry_t: entry_type >>
     ws!(char!('{')) >>
     citation_key: ws!(map_res!(take_until_and_consume!(","), str::from_utf8)) >>
-    tags: map!(
-        bib_tags,
-        { |tags: Vec<(&str, &str)>| tags.iter().map(|t| convert_tuple_str_owned(t)).collect() }
-    ) >>
+    tags: bib_tags >>
     ws!(char!('}')) >>
     (Entry::Bibliography(BibliographyEntry::new(entry_t, citation_key, tags)))
 ));
@@ -165,10 +165,6 @@ named!(inside_backet,
     )
 );
 
-fn convert_tuple_str_owned(tuple: &(&str, &str)) -> (String, String) {
-    (tuple.0.into(), tuple.1.into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,20 +173,20 @@ mod tests {
     #[test]
     fn test_entry() {
         assert_eq!(entry(b" comment"),
-                   IResult::Done(&b""[..], Entry::Comment("comment".into())));
+                   IResult::Done(&b""[..], Entry::Comment("comment")));
 
         assert_eq!(entry(b" @ StrIng { key = \"value\" }"),
-                   IResult::Done(&b""[..], Entry::Variable("key".into(), "value".into())));
+                   IResult::Done(&b""[..], Entry::Variable("key", "value")));
     }
 
     #[test]
     fn test_entry_with_type() {
         assert_eq!(entry_with_type(b"@Comment{test}"),
-                   IResult::Done(&b""[..], Entry::Comment("test".into()))
+                   IResult::Done(&b""[..], Entry::Comment("test"))
         );
 
         assert_eq!(entry_with_type(b"@String{key=\"value\"}"),
-                   IResult::Done(&b""[..], Entry::Variable("key".into(), "value".into()))
+                   IResult::Done(&b""[..], Entry::Variable("key", "value"))
         );
 
         let example_bibtex = b"@misc{ patashnik-bibtexing,
@@ -201,9 +197,9 @@ mod tests {
         let response = BibliographyEntry::new("misc",
                                               "patashnik-bibtexing",
                                               vec![
-                ("author".into(), "Oren Patashnik".into()),
-                ("title".into(), "BIBTEXing".into()),
-                ("year".into(), "1988".into())
+                ("author", "Oren Patashnik"),
+                ("title", "BIBTEXing"),
+                ("year", "1988")
             ]);
         assert_eq!(entry_with_type(example_bibtex),
                    IResult::Done(&b""[..], Entry::Bibliography(response))
@@ -213,20 +209,20 @@ mod tests {
     #[test]
     fn test_type_comment() {
         assert_eq!(type_comment(b"@Comment{test}"),
-                   IResult::Done(&b""[..], Entry::Comment("test".into())));
+                   IResult::Done(&b""[..], Entry::Comment("test")));
     }
 
     #[test]
     fn test_variable() {
         assert_eq!(variable(b"@string{key=\"value\"}"),
                    IResult::Done(&b""[..],
-                                 Entry::Variable("key".into(), "value".into())));
+                                 Entry::Variable("key", "value")));
     }
 
     #[test]
     fn test_preamble() {
         assert_eq!(preamble(b"@preamble{my preamble}"),
-                   IResult::Done(&b""[..], Entry::Preamble("my preamble".into())));
+                   IResult::Done(&b""[..], Entry::Preamble("my preamble")));
     }
 
     #[test]
@@ -298,9 +294,9 @@ mod tests {
         let response = BibliographyEntry::new("misc",
                                               "patashnik-bibtexing",
                                               vec![
-                ("author".into(), "Oren Patashnik".into()),
-                ("title".into(), "BIBTEXing".into()),
-                ("year".into(), "1988".into())
+                ("author", "Oren Patashnik"),
+                ("title", "BIBTEXing"),
+                ("year", "1988")
             ]);
         assert_eq!(bibliography_entry(example_bibtex),
                    IResult::Done(&b""[..], Entry::Bibliography(response)));

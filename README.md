@@ -1,7 +1,7 @@
 # nom-bibtex
 [![Build Status](https://travis-ci.org/charlesvdv/nom-bibtex.svg?branch=master)](https://travis-ci.org/charlesvdv/nom-bibtex)
 
-A nearly feature complete *BibTeX* parser using [nom](https://github.com/Geal/nom).
+A nearly feature complete *BibTeX* zero-copy parser using [nom](https://github.com/Geal/nom).
 
 **nom-bibtex** can parse the four different type of entries listed in the
 [BibTeX format description](http://www.bibtex.org/Format/):

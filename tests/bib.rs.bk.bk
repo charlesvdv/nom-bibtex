@@ -18,13 +18,13 @@ some comments
 
 #[test]
 fn test_bibtex() {
-    let biblio =
-        BibliographyEntry::new("misc",
-                               "knuthwebsite",
-                               vec![("author", "Donald Knuth"),
-                                    ("title", "Knuth: Computers and Typesetting"),
-                                    ("url",
-                                     "http://www-cs-faculty.stanford.edu/\\~{}uno/abcde.html")]);
+    let biblio = BibliographyEntry::new("misc",
+                                        "knuthwebsite",
+                                        vec![
+        ("author", "Donald Knuth"),
+        ("title", "Knuth: Computers and Typesetting"),
+        ("url", "http://www-cs-faculty.stanford.edu/\\~{}uno/abcde.html")
+    ]);
     assert_eq!(Bibtex::parse(BIBDATA).unwrap(),
                Bibtex::new(vec![Entry::Bibliography(biblio),
                                 Entry::Variable("key", "value"),

@@ -9,24 +9,23 @@ use std::convert::TryFrom;
 #[derive(Debug, PartialEq, Eq)]
 /// A high-level definition of a bibtex file that contains
 /// multiples entries.
-pub struct Bibtex<'a> {
-    entries: Vec<Entry<'a>>,
+pub struct Bibtex {
+    entries: Vec<Entry>,
 }
 
-impl<'a> Bibtex<'a> {
-    pub fn new(entries: Vec<Entry<'a>>) -> Self {
-        Self { entries }
+impl Bibtex {
+    pub fn new(entries: Vec<Entry>) -> Self {
+        Self{ entries }
     }
 
-    /// Create a new Bibtex instance from a *BibTeX* file content.
-    pub fn parse(bibtex: &'a str) -> Result<Self, ParsingError> {
+
+    pub fn parse(bibtex: &str) -> Result<Self, ParsingError>  {
         match parser::bibtex(bibtex.as_bytes()).to_full_result() {
             Ok(v) => Ok(v),
-            Err(e) => Err(convert_nom_ierror(e)),
+            Err(e) => Err(convert_nom_ierror(e))
         }
     }
 
-    /// Get all the *BibTeX* entries.
     pub fn entries(&self) -> &Vec<Entry> {
         &self.entries
     }
@@ -53,42 +52,38 @@ impl<'a> TryFrom<&'a str> for Bibtex {
 /// More information can be found
 /// [here](http://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html)
 #[derive(Debug, PartialEq, Eq)]
-pub enum Entry<'a> {
-    Preamble(&'a str),
-    Comment(&'a str),
-    Variable(&'a str, &'a str),
-    Bibliography(BibliographyEntry<'a>),
+pub enum Entry {
+    Preamble(String),
+    Comment(String),
+    Variable(String, String),
+    Bibliography(BibliographyEntry),
 }
 
 /// An entry of a bibtex bibliography.
 #[derive(Debug, PartialEq, Eq)]
-pub struct BibliographyEntry<'a> {
+pub struct BibliographyEntry {
     /// The type of the bibtex entry.
     ///
     /// Example: *misc*, *article*, *manual*, ...
-    pub entry_type: &'a str,
+    pub entry_type: String,
     /// The citation key used to reference the bibliography in the LaTeX
     /// file.
-    pub citation_key: &'a str,
+    pub citation_key: String,
     /// Defines the characteristics of the bibliography such as *author*,
     /// *title*, *year*, ...
-    tags: Vec<(&'a str, &'a str)>,
+    tags: Vec<(String, String)>,
 }
 
-impl<'a> BibliographyEntry<'a> {
-    pub fn new(entry_type: &'a str, citation_key: &'a str, tags: Vec<(&'a str, &'a str)>) -> Self {
+impl BibliographyEntry {
+    pub fn new(entry_type: &str, citation_key: &str, tags: Vec<(String, String)>) -> Self {
         BibliographyEntry {
-            entry_type,
-            citation_key,
+            entry_type: entry_type.into(),
+            citation_key: citation_key.into(),
             tags,
         }
     }
 
-    /// Get the tags of a bibliography entry.
-    ///
-    /// Tags are the characteristics of the bibliography such as
-    /// *author*, *title*, *year*, ...
-    pub fn tags(&self) -> &Vec<(&str, &str)> {
+    pub fn tags(&self) -> &Vec<(String, String)> {
         &self.tags
     }
 }
@@ -105,7 +100,7 @@ impl<'a> TryFrom<&'a str> for BibliographyEntry {
                     Ok(entry)
                 }
                 unreachable!();
-            }
+            },
             Err(e) => Err(handle_nom_ierror),
         }
     }

@@ -26,13 +26,13 @@
 //!     let biblio = Bibtex::parse(BIBFILE_DATA).unwrap();
 //!     let entries = biblio.entries();
 //!
-//!     assert_eq!(entries[0], Entry::Preamble("A bibtex preamble".into()));
+//!     assert_eq!(entries[0], Entry::Preamble("A bibtex preamble"));
 //!     assert_eq!(entries[1], Entry::Bibliography(BibliographyEntry::new(
 //!         "misc",
 //!         "my_citation_key",
 //!         vec![
-//!             ("author".into(), "Charles Vandevoorde".into()),
-//!             ("title".into(), "nom-bibtex".into())
+//!             ("author", "Charles Vandevoorde"),
+//!             ("title", "nom-bibtex")
 //!         ]
 //!     )));
 //! }
