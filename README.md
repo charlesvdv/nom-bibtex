@@ -1,5 +1,7 @@
 # nom-bibtex
 [![Build Status](https://travis-ci.org/charlesvdv/nom-bibtex.svg?branch=master)](https://travis-ci.org/charlesvdv/nom-bibtex)
+[![Docs Badge](https://docs.rs/nom-bibtex/badge.svg)](https://docs.rs/nom-bibtex)
+[![crates.io](http://meritbadge.herokuapp.com/nom-bibtex)](https://crates.io/crates/nom-bibtex)
 
 A nearly feature complete *BibTeX* zero-copy parser using [nom](https://github.com/Geal/nom).
 
