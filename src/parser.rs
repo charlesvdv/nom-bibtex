@@ -2,13 +2,12 @@
 //!
 //! All the parsers are using the *nom* crates.
 
-
 // Required because the compiler don't seems do recognize
 // that macros are use inside of each others..
 #![allow(dead_code)]
 
 use std::str;
-use nom::{alpha, alphanumeric, IResult};
+use nom::{alpha, alphanumeric, IResult, ErrorKind};
 use model::{Bibtex, Entry, BibliographyEntry};
 
 /// Parse a complete bibtex file.
@@ -175,24 +174,49 @@ named!(peeked_entry_type<&str>,
 
 
 /// A string value in bibtex can be written in the form:
-/// - ```{my string}```
-/// - ```"mystring"```
-named!(string<&str>,
-    ws!(
-        alt!(
-            delimited!(
-                char!('"'),
-                map!(map_res!(take_until!("\""), str::from_utf8), str::trim),
-                char!('"')
-            ) |
-            delimited!(
-                char!('{'),
-                map!(map_res!(take_until!("}"), str::from_utf8), str::trim),
-                char!('}')
-            )
-        )
-    )
-);
+/// - {my string}
+/// - "my string"
+///
+/// Implemented as a state machine because weirds rules
+/// of bibtex string. See
+/// [here](http://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html)
+/// for rules.
+fn string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
+    let start_delimiter = input[0] as char;
+    let mut i = 1;
+
+    let mut brackets_queue = 0;
+
+    loop {
+        i += 1;
+
+        match input[i] as char {
+            '{' => brackets_queue += 1,
+            '}' => {
+                if brackets_queue != 0 {
+                    brackets_queue -= 1;
+                } else if start_delimiter == '{' {
+                    break;
+                } else {
+                    return IResult::Error(ErrorKind::Custom(0));
+                }
+            }
+            '"' => {
+                if brackets_queue == 0 {
+                    if start_delimiter == '"' {
+                        break;
+                    } else {
+                        return IResult::Error(ErrorKind::Custom(0));
+                    }
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    let value = str::from_utf8(&input[1..i]).expect("Unable to parse char sequence");
+    IResult::Done(&input[i + 1..], str::trim(value))
+}
 
 /// Parse the string inside backets.
 named!(inside_backet,
@@ -288,6 +312,15 @@ mod tests {
 
         assert_eq!(string(b"{Oren Patashnik}"),
                    IResult::Done(&b""[..], "Oren Patashnik"));
+
+        assert_eq!(string(b"\"A {bunch {of} braces {in}} title\""),
+                   IResult::Done(&b""[..], "A {bunch {of} braces {in}} title"));
+
+        assert_eq!(string(b"\"Simon {\"}the {saint\"} Templar\""),
+                   IResult::Done(&b""[..], "Simon {\"}the {saint\"} Templar"));
+
+        assert_eq!(string(b"\"Simon {\"}the {saint\"} Templar\""),
+                   IResult::Done(&b""[..], "Simon {\"}the {saint\"} Templar"));
     }
 
     #[test]

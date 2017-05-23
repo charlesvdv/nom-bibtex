@@ -46,6 +46,4 @@ fn main() {
 
 ## TODO
 
-- The parser is not yet perfectly compliant to the *BibTeX* format
-([source](http://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html)).
 - The string variable are not yet used.
