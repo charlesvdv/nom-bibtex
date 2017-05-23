@@ -1,10 +1,20 @@
 [package]
 name = "nom-bibtex"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Charles Vandevoorde <charles.vandevoorde@hotmail.be>"]
+
+description = "BibTeX zero-copy parser using nom"
+
+repository = "https://github.com/charlesvdv/nom-bibtex"
+documentation = "https://docs.rs/nom-bibtex"
+
+license = "MIT"
 
 [lib]
 name = "nom_bibtex"
+
+[badges]
+travis-ci = { repository = "charlesvdv/nom-bibtex" }
 
 [dependencies]
 nom = "3.0.*"
