@@ -1,124 +1,206 @@
 use std::str;
-use nom::IError;
-use error::ParsingError;
+use error::BibtexError;
+use std::result;
 use parser;
+use parser::Entry;
 
-#[cfg(features="nightly")]
-use std::convert::TryFrom;
+type Result<T> = result::Result<T, BibtexError>;
 
-#[derive(Debug, PartialEq, Eq)]
-/// A high-level definition of a bibtex file that contains
-/// multiples entries.
+/// A high-level definition of a bibtex file.
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct Bibtex<'a> {
-    entries: Vec<Entry<'a>>,
+    comments: Vec<&'a str>,
+    preambles: Vec<String>,
+    variables: Vec<(String, String)>,
+    bibliographies: Vec<Bibliography<'a>>,
 }
 
 impl<'a> Bibtex<'a> {
-    pub fn new(entries: Vec<Entry<'a>>) -> Self {
-        Self { entries }
+    /// Create a new Bibtex instance from a *BibTeX* file content.
+    pub fn parse(bibtex: &'a str) -> Result<Self> {
+        let entries = Self::raw_parse(bibtex)?;
+
+        let mut bibtex = Bibtex::default();
+
+        Self::fill_variables(&mut bibtex, &entries)?;
+
+        for entry in entries {
+            match entry {
+                Entry::Variable(_) => continue, // Already handled.
+                Entry::Comment(v) => bibtex.comments.push(v),
+                Entry::Preamble(v) => {
+                    let new_val = Self::expand_str_abbreviations(v, &bibtex)?;
+                    bibtex.preambles.push(new_val);
+                }
+                Entry::Bibliography(entry_t, citation_key, tags) => {
+                    let mut new_tags = vec![];
+                    for tag in tags {
+                        new_tags.push((tag.key.into(),
+                                       Self::expand_str_abbreviations(tag.value, &bibtex)?))
+                    }
+                    bibtex
+                        .bibliographies
+                        .push(Bibliography::new(entry_t, citation_key, new_tags));
+                }
+            }
+        }
+        Ok(bibtex)
     }
 
-    /// Create a new Bibtex instance from a *BibTeX* file content.
-    pub fn parse(bibtex: &'a str) -> Result<Self, ParsingError> {
-        match parser::bibtex(bibtex.as_bytes()).to_full_result() {
+    /// Get a raw vector of entries in order from the files.
+    pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
+        match parser::entries(bibtex.as_bytes()).to_full_result() {
             Ok(v) => Ok(v),
-            Err(e) => Err(convert_nom_ierror(e)),
+            Err(e) => Err(From::from(e)),
         }
     }
 
-    /// Get all the *BibTeX* entries.
-    pub fn entries(&self) -> &Vec<Entry> {
-        &self.entries
+    /// Get preambles with expanded variables.
+    pub fn preambles(&self) -> &Vec<String> {
+        &self.preambles
+    }
+
+    /// Get comments.
+    pub fn comments(&self) -> &Vec<&str> {
+        &self.comments
+    }
+
+    /// Get string variables with a tuple of key and expanded value.
+    pub fn variables(&self) -> &Vec<(String, String)> {
+        &self.variables
+    }
+
+    /// Get bibliographies entry with variables expanded.
+    pub fn bibliographies(&self) -> &Vec<Bibliography> {
+        &self.bibliographies
+    }
+
+    fn fill_variables(bibtex: &mut Bibtex, entries: &[Entry]) -> Result<()> {
+        let variables = entries
+            .iter()
+            .filter_map(|v| match v {
+                            &Entry::Variable(ref v) => Some(v),
+                            _ => None,
+                        })
+            .collect::<Vec<_>>();
+
+        for var in &variables {
+            bibtex
+                .variables
+                .push((var.key.into(), Self::expand_variables_value(&var.value, &variables)?));
+        }
+
+        Ok(())
+    }
+
+    fn expand_variables_value(var_values: &Vec<StringValueType>,
+                              variables: &Vec<&KeyValue>)
+                              -> Result<String> {
+        let mut result_value = String::new();
+
+        for chunck in var_values {
+            match *chunck {
+                StringValueType::Str(v) => result_value.push_str(v),
+                StringValueType::Abbreviation(v) => {
+                    let var = variables
+                        .iter()
+                        .find(|&&x| v == x.key)
+                        .ok_or_else(|| BibtexError::StringVariableNotFound(v.into()))?;
+                    result_value.push_str(&Self::expand_variables_value(&var.value, &variables)?);
+                }
+            }
+        }
+        Ok(result_value)
+    }
+
+    fn expand_str_abbreviations(value: Vec<StringValueType>, bibtex: &Bibtex) -> Result<String> {
+        let mut result = String::new();
+
+        for chunck in value {
+            match chunck {
+                StringValueType::Str(v) => result.push_str(v),
+                StringValueType::Abbreviation(v) => {
+                    let var = bibtex
+                        .variables
+                        .iter()
+                        .find(|&x| v == x.0)
+                        .ok_or_else(|| BibtexError::StringVariableNotFound(v.into()))?;
+                    result.push_str(&var.1);
+                }
+            }
+        }
+        Ok(result)
     }
 }
 
-#[cfg(features="nightly")]
-impl<'a> TryFrom<&'a str> for Bibtex {
-    type Error = ParsingError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Bibtex::parse(value)
-    }
-}
-
-/// Describe an entry in the bibtex file.
-/// We can have 4 types of entries:
-///
-/// - A comment.
-/// - A preamble is a comment which will be kept in the generated
-/// Bibtex file.
-/// - A string variable.
-/// - A bibliograpy entry.
-///
-/// More information can be found
-/// [here](http://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html)
+/// This is the main representation of a bibliography.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Entry<'a> {
-    Preamble(&'a str),
-    Comment(&'a str),
-    Variable(&'a str, &'a str),
-    Bibliography(BibliographyEntry<'a>),
+pub struct Bibliography<'a> {
+    entry_type: &'a str,
+    citation_key: &'a str,
+    tags: Vec<(String, String)>,
 }
 
-/// An entry of a bibtex bibliography.
-#[derive(Debug, PartialEq, Eq)]
-pub struct BibliographyEntry<'a> {
-    /// The type of the bibtex entry.
-    ///
-    /// Example: *misc*, *article*, *manual*, ...
-    pub entry_type: &'a str,
-    /// The citation key used to reference the bibliography in the LaTeX
-    /// file.
-    pub citation_key: &'a str,
-    /// Defines the characteristics of the bibliography such as *author*,
-    /// *title*, *year*, ...
-    tags: Vec<(&'a str, &'a str)>,
-}
-
-impl<'a> BibliographyEntry<'a> {
-    pub fn new(entry_type: &'a str, citation_key: &'a str, tags: Vec<(&'a str, &'a str)>) -> Self {
-        BibliographyEntry {
+impl<'a> Bibliography<'a> {
+    /// Create a new bibliography.
+    pub fn new(entry_type: &'a str,
+               citation_key: &'a str,
+               tags: Vec<(String, String)>)
+               -> Bibliography<'a> {
+        Bibliography {
             entry_type,
             citation_key,
             tags,
         }
     }
 
-    /// Get the tags of a bibliography entry.
+    /// Get the entry type.
     ///
-    /// Tags are the characteristics of the bibliography such as
-    /// *author*, *title*, *year*, ...
-    pub fn tags(&self) -> &Vec<(&str, &str)> {
+    /// It represents the type of the publications such as article, book, ...
+    pub fn entry_type(&self) -> &str {
+        self.entry_type
+    }
+
+    /// Get the citation key.
+    ///
+    /// The citation key is the the keyword used to reference the bibliography
+    /// in a LaTeX file for example.
+    pub fn citation_key(&self) -> &str {
+        self.citation_key
+    }
+
+    /// Get the tags.
+    ///
+    /// Tags are the specifics information about a bibliography
+    /// such as author, date, title, ...
+    pub fn tags(&self) -> &Vec<(String, String)> {
         &self.tags
     }
 }
 
-/// Convert str to a ```BibliographyEntry```.
-#[cfg(features="nightly")]
-impl<'a> TryFrom<&'a str> for BibliographyEntry {
-    type Error = ParsingError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match parser::bibliography_entry(value.as_bytes()).to_full_result() {
-            Ok(v) => {
-                if let Entry::Bibliography(entry) = v {
-                    Ok(entry)
-                }
-                unreachable!();
-            }
-            Err(e) => Err(handle_nom_ierror),
-        }
-    }
+/// Represent a Bibtex value which is composed of
+///
+/// - strings value
+/// - string variable/abbreviation which will be expanded after parsing.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StringValueType<'a> {
+    /// Just a basic string.
+    Str(&'a str),
+    /// An abbreviation that should match some string variable.
+    Abbreviation(&'a str),
 }
 
-/// Helper function to convert a IError from nom to
-/// custom ParsingError.
-fn convert_nom_ierror(err: IError) -> ParsingError {
-    match err {
-        IError::Incomplete(e) => {
-            let msg = format!("Incomplete: {:?}", e);
-            ParsingError::new(&msg)
-        }
-        IError::Error(e) => ParsingError::new(e.description()),
+/// Representation of a key-value.
+///
+/// Only used by parsing.
+#[derive(Debug, PartialEq, Eq)]
+pub struct KeyValue<'a> {
+    pub key: &'a str,
+    pub value: Vec<StringValueType<'a>>,
+}
+
+impl<'a> KeyValue<'a> {
+    pub fn new(key: &'a str, value: Vec<StringValueType<'a>>) -> KeyValue<'a> {
+        Self { key, value: value }
     }
 }

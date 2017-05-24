@@ -1,9 +1,11 @@
 [package]
 name = "nom-bibtex"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Charles Vandevoorde <charles.vandevoorde@hotmail.be>"]
 
-description = "BibTeX zero-copy parser using nom"
+description = "BibTeX parser using nom"
+categories = ["parsing"]
+keywords = ["bibtex", "latex", "parser", "nom"]
 
 repository = "https://github.com/charlesvdv/nom-bibtex"
 documentation = "https://docs.rs/nom-bibtex"
@@ -19,7 +21,3 @@ travis-ci = { repository = "charlesvdv/nom-bibtex" }
 [dependencies]
 nom = "3.0.*"
 quick-error = "1.2.*"
-
-[features]
-default = []
-nightly = []

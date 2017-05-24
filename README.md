@@ -3,49 +3,64 @@
 [![Docs Badge](https://docs.rs/nom-bibtex/badge.svg)](https://docs.rs/nom-bibtex)
 [![crates.io](http://meritbadge.herokuapp.com/nom-bibtex)](https://crates.io/crates/nom-bibtex)
 
-A nearly feature complete *BibTeX* zero-copy parser using [nom](https://github.com/Geal/nom).
+A feature complete *BibTeX* parser using [nom](https://github.com/Geal/nom).
 
-**nom-bibtex** can parse the four different type of entries listed in the
+**nom-bibtex** can parse the four differents types of entries listed in the
 [BibTeX format description](http://www.bibtex.org/Format/):
 
-- Preamble which allows to call *LaTeX* command inside your *BibTeX*.
-- String which defines abbreviations in a key-value format.
-- Comment
-- Entry which defines a bibliography entry.
+- Preambles which allows to call *LaTeX* command inside your *BibTeX*.
+- Strings which defines abbreviations in a key-value format.
+- Comments.
+- Bibliography entries.
 
-## Code example
+## Example
 
 ```rust
 extern crate nom_bibtex;
 use nom_bibtex::*;
 
-const BIBFILE_DATA: &str = "
-    @preamble{
+const BIBFILE_DATA: &str = "@preamble{
         A bibtex preamble
     }
 
-    @misc{my_citation_key,
-        author= {Charles Vandevoorde},
-        title = \"nom-bibtex\"
+    @Comment{
+        Here is a comment.
+    }
+
+    Another comment!
+
+    @string ( name= \"Charles Vandevoorde\")
+    @string (github = \"https://github.com/charlesvdv\")
+
+    @misc {my_citation_key,
+        author= name,
+        title = \"nom-bibtex\",
+        note = \"Github: \" # github
     }
 ";
 
 fn main() {
-    let biblio = Bibtex::parse(BIBFILE_DATA).unwrap();
-    let entries = biblio.entries();
+    let bibtex = Bibtex::parse(BIBFILE_DATA).unwrap();
 
-    assert_eq!(entries[0], Entry::Preamble("A bibtex preamble".into()));
-    assert_eq!(entries[1], Entry::Bibliography(BibliographyEntry::new(
-        "misc",
-        "my_citation_key",
-        vec![
-            ("author".into(), "Charles Vandevoorde".into()),
-            ("title".into(), "nom-bibtex".into())
-        ]
-    )));
+    let preambles = bibtex.preambles();
+    assert_eq!(preambles[0], "A bibtex preamble");
+
+    let comments = bibtex.comments();
+    assert_eq!(comments[0], "Here is a comment.");
+    assert_eq!(comments[1], "Another comment!");
+
+    let variables = bibtex.variables();
+    assert_eq!(variables[0], ("name".into(), "Charles Vandevoorde".into()));
+    assert_eq!(variables[1], ("github".into(), "https://github.com/charlesvdv".into()));
+
+    let biblio = &bibtex.bibliographies()[0];
+    assert_eq!(biblio.entry_type(), "misc");
+    assert_eq!(biblio.citation_key(), "my_citation_key");
+
+    let bib_tags = biblio.tags();
+    assert_eq!(bib_tags[0], ("author".into(), "Charles Vandevoorde".into()));
+    assert_eq!(bib_tags[1], ("title".into(), "nom-bibtex".into()));
+    assert_eq!(bib_tags[2], ("note".into(), "Github: https://github.com/charlesvdv".into()));
 }
 ```
 
-## TODO
-
-- The string variable are not yet used.

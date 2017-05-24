@@ -8,7 +8,7 @@ use std::io::prelude::*;
 
 #[bench]
 fn bench_parser(b: &mut test::Bencher) {
-    let mut file = File::open("samples/bench.bib").unwrap();
+    let mut file = File::open("samples/test.bib").unwrap();
     let mut bib_content = String::new();
 
     file.read_to_string(&mut bib_content).unwrap();

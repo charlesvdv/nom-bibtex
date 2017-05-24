@@ -1,15 +1,24 @@
 @Comment{
-    Extracted from:
+    Inspired from:
     https://www.sharelatex.com/learn/Bibliography_management_with_bibtex
 }
+@preamble{
+    Why not a preamble
+}
+
+@string(donald="Donald Knuth")
+@string(mass="Massachusetts")
+@string{ alb = "Albert"}
+@string{ ein = "Einstein"}
+@string(ae = alb # " " # ein)
 
 @article{einstein,
-    author =       "Albert Einstein",
+    author =       ae,
     title =        "{Zur Elektrodynamik bewegter K{\"o}rper}. ({German})
         [{On} the electrodynamics of moving bodies]",
     journal =      "Annalen der Physik",
     volume =       "322",
-    number =       "10",
+    number =       10,
     pages =        "891--921",
     year =         "1905",
     DOI =          "http://dx.doi.org/10.1002/andp.19053221004"
@@ -18,13 +27,13 @@
 @book{latexcompanion,
     author    = "Michel Goossens and Frank Mittelbach and Alexander Samarin",
     title     = "The \LaTeX\ Companion",
-    year      = "1993",
+    year      = 1993,
     publisher = "Addison-Wesley",
-    address   = "Reading, Massachusetts"
+    address   = "Reading, " # mass
 }
 
 @misc{knuthwebsite,
-    author    = "Donald Knuth",
+    author    = donald,
     title     = "Knuth: Computers and Typesetting",
     url       = "http://www-cs-faculty.stanford.edu/\~{}uno/abcde.html"
 }
