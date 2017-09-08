@@ -7,8 +7,8 @@
 // #![allow(dead_code)]
 //
 use std::str;
-use nom::{alpha, is_digit, IResult, ErrorKind};
-use model::{StringValueType, KeyValue};
+use nom::{alpha, is_digit, ErrorKind, IResult};
+use model::{KeyValue, StringValueType};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Entry<'a> {
@@ -230,18 +230,14 @@ fn bracketed_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
         i += 1;
         match input[i] as char {
             '{' => brackets_queue += 1,
-            '}' => {
-                if brackets_queue == 0 {
-                    break;
-                } else {
-                    brackets_queue -= 1;
-                }
-            }
-            '"' => {
-                if brackets_queue == 0 {
-                    return IResult::Error(ErrorKind::Custom(0));
-                }
-            }
+            '}' => if brackets_queue == 0 {
+                break;
+            } else {
+                brackets_queue -= 1;
+            },
+            '"' => if brackets_queue == 0 {
+                return IResult::Error(ErrorKind::Custom(0));
+            },
             '@' => return IResult::Error(ErrorKind::Custom(0)),
             _ => continue,
         }
@@ -267,11 +263,9 @@ fn quoted_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
                     return IResult::Error(ErrorKind::Custom(0));
                 }
             }
-            '"' => {
-                if brackets_queue == 0 {
-                    break;
-                }
-            }
+            '"' => if brackets_queue == 0 {
+                break;
+            },
             _ => continue,
         }
     }
@@ -324,9 +318,9 @@ mod tests {
     #[test]
     fn test_no_type_comment() {
         assert_eq!(no_type_comment(b"test@"),
-                   IResult::Done(&b"@"[..], "test"));
+        IResult::Done(&b"@"[..], "test"));
         assert_eq!(no_type_comment(b"test"),
-                   IResult::Done(&b""[..], "test"));
+        IResult::Done(&b""[..], "test"));
     }
 
     #[test]
@@ -369,7 +363,7 @@ mod tests {
     #[test]
     fn test_type_comment() {
         assert_eq!(type_comment(b"@Comment{test}"),
-                   IResult::Done(&b""[..], Entry::Comment("test")));
+        IResult::Done(&b""[..], Entry::Comment("test")));
     }
 
     #[test]
@@ -386,29 +380,33 @@ mod tests {
     fn test_variable() {
         let kv1 = KeyValue::new("key", vec![StringValueType::Str("value")]);
         let kv2 = KeyValue::new("key", vec![StringValueType::Str("value")]);
-        let kv3 = KeyValue::new("key",
-                                vec![
-            StringValueType::Abbreviation("varone"),
-            StringValueType::Abbreviation("vartwo")
-        ]);
+        let kv3 = KeyValue::new(
+            "key",
+            vec![
+                StringValueType::Abbreviation("varone"),
+                StringValueType::Abbreviation("vartwo")
+            ],
+        );
 
         assert_eq!(variable(b"@string{key=\"value\"}"),
-                   IResult::Done(&b""[..], Entry::Variable(kv1)));
+        IResult::Done(&b""[..], Entry::Variable(kv1)));
 
         assert_eq!(variable(b"@string( key=\"value\" )"),
-                   IResult::Done(&b""[..], Entry::Variable(kv2)));
+        IResult::Done(&b""[..], Entry::Variable(kv2)));
 
         assert_eq!(variable(b"@string( key=varone # vartwo)"),
-                   IResult::Done(&b""[..], Entry::Variable(kv3)));
+        IResult::Done(&b""[..], Entry::Variable(kv3)));
     }
 
     #[test]
     fn test_variable_key_value_pair() {
-        let kv = KeyValue::new("key",
-                               vec![
+        let kv = KeyValue::new(
+            "key",
+            vec![
                 StringValueType::Abbreviation("varone"),
                 StringValueType::Abbreviation("vartwo")
-            ]);
+            ],
+        );
 
         assert_eq!(
             variable_key_value_pair(b"key = varone # vartwo,"),
@@ -424,10 +422,10 @@ mod tests {
            year = \"1988\", }";
 
         let tags = vec![
-                        KeyValue::new("author", vec![StringValueType::Str("Oren Patashnik")]),
-                        KeyValue::new("title", vec![StringValueType::Str("BIBTEXing")]),
-                        KeyValue::new("year", vec![StringValueType::Str("1988")])
-                   ];
+             KeyValue::new("author", vec![StringValueType::Str("Oren Patashnik")]),
+             KeyValue::new("title", vec![StringValueType::Str("BIBTEXing")]),
+             KeyValue::new("year", vec![StringValueType::Str("1988")])
+        ];
         assert_eq!(
             bibliography_entry(bib_str),
             IResult::Done(
@@ -465,13 +463,13 @@ mod tests {
     #[test]
     fn test_entry_type() {
         assert_eq!(entry_type(b"@misc{"),
-                   IResult::Done(&b"{"[..], "misc"));
+        IResult::Done(&b"{"[..], "misc"));
 
         assert_eq!(entry_type(b"@ misc {"),
-                   IResult::Done(&b"{"[..], "misc"));
+        IResult::Done(&b"{"[..], "misc"));
 
         assert_eq!(entry_type(b"@string("),
-                   IResult::Done(&b"("[..], "string"));
+        IResult::Done(&b"("[..], "string"));
     }
 
     #[test]
@@ -517,8 +515,8 @@ mod tests {
         assert_eq!(quoted_string(b"\"test \""), IResult::Done(&b""[..], "test "));
         assert_eq!(quoted_string(b"\"{\"test\"}\""), IResult::Done(&b""[..], "{\"test\"}"));
         assert_eq!(quoted_string(b"\"A {bunch {of} braces {in}} title\""),
-                   IResult::Done(&b""[..], "A {bunch {of} braces {in}} title"));
+        IResult::Done(&b""[..], "A {bunch {of} braces {in}} title"));
         assert_eq!(quoted_string(b"\"Simon {\"}the {saint\"} Templar\""),
-                   IResult::Done(&b""[..], "Simon {\"}the {saint\"} Templar"));
+        IResult::Done(&b""[..], "Simon {\"}the {saint\"} Templar"));
     }
 }

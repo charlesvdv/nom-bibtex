@@ -68,5 +68,5 @@ pub mod error;
 mod parser;
 pub mod model;
 
-pub use model::{Bibtex, Bibliography};
+pub use model::{Bibliography, Bibtex};
 pub use parser::Entry;

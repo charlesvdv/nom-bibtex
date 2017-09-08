@@ -35,8 +35,10 @@ impl<'a> Bibtex<'a> {
                 Entry::Bibliography(entry_t, citation_key, tags) => {
                     let mut new_tags = vec![];
                     for tag in tags {
-                        new_tags.push((tag.key.into(),
-                                       Self::expand_str_abbreviations(tag.value, &bibtex)?))
+                        new_tags.push((
+                            tag.key.into(),
+                            Self::expand_str_abbreviations(tag.value, &bibtex)?,
+                        ))
                     }
                     bibtex
                         .bibliographies
@@ -79,23 +81,25 @@ impl<'a> Bibtex<'a> {
         let variables = entries
             .iter()
             .filter_map(|v| match v {
-                            &Entry::Variable(ref v) => Some(v),
-                            _ => None,
-                        })
+                &Entry::Variable(ref v) => Some(v),
+                _ => None,
+            })
             .collect::<Vec<_>>();
 
         for var in &variables {
-            bibtex
-                .variables
-                .push((var.key.into(), Self::expand_variables_value(&var.value, &variables)?));
+            bibtex.variables.push((
+                var.key.into(),
+                Self::expand_variables_value(&var.value, &variables)?,
+            ));
         }
 
         Ok(())
     }
 
-    fn expand_variables_value(var_values: &Vec<StringValueType>,
-                              variables: &Vec<&KeyValue>)
-                              -> Result<String> {
+    fn expand_variables_value(
+        var_values: &Vec<StringValueType>,
+        variables: &Vec<&KeyValue>,
+    ) -> Result<String> {
         let mut result_value = String::new();
 
         for chunck in var_values {
@@ -143,10 +147,11 @@ pub struct Bibliography<'a> {
 
 impl<'a> Bibliography<'a> {
     /// Create a new bibliography.
-    pub fn new(entry_type: &'a str,
-               citation_key: &'a str,
-               tags: Vec<(String, String)>)
-               -> Bibliography<'a> {
+    pub fn new(
+        entry_type: &'a str,
+        citation_key: &'a str,
+        tags: Vec<(String, String)>,
+    ) -> Bibliography<'a> {
         Bibliography {
             entry_type,
             citation_key,

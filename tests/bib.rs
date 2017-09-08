@@ -31,8 +31,10 @@ fn test_bib() {
 
     let b1 = &bibtex.bibliographies()[1];
     assert_eq!(b1.citation_key(), "latexcompanion");
-    assert_eq!(b1.tags()[4],
-               ("address".into(), "Reading, Massachusetts".into()));
+    assert_eq!(
+        b1.tags()[4],
+        ("address".into(), "Reading, Massachusetts".into())
+    );
 
     let b2 = &bibtex.bibliographies()[2];
     assert_eq!(b2.citation_key(), "knuthwebsite");
