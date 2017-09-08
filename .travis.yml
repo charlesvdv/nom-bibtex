@@ -12,9 +12,9 @@ cache: cargo
 
 install:
   - export PATH="$PATH:$HOME/.cargo/bin"
-  - which rustfmt || cargo install rustfmt
+  - if [[ TRAVIS_RUST_VERSION = "nightly" ]]; then which rustfmt || cargo install rustfmt-nightly; fi;
 
 script:
-  - cargo fmt -- --write-mode=diff
+  - if [[ TRAVIS_RUST_VERSION = "nightly" ]]; then cargo fmt -- --write-mode=diff; fi;
   - cargo build
   - cargo test
