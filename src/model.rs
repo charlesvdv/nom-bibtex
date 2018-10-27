@@ -1,6 +1,7 @@
 use std::str;
 use error::BibtexError;
 use std::result;
+use nom::types::CompleteByteSlice;
 use parser;
 use parser::Entry;
 
@@ -51,8 +52,8 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        match parser::entries(bibtex.as_bytes()).to_full_result() {
-            Ok(v) => Ok(v),
+        match parser::entries(CompleteByteSlice(bibtex.as_bytes())) {
+            Ok((_, v)) => Ok(v),
             Err(e) => Err(From::from(e)),
         }
     }

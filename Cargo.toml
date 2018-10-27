@@ -19,5 +19,5 @@ name = "nom_bibtex"
 travis-ci = { repository = "charlesvdv/nom-bibtex" }
 
 [dependencies]
-nom = "3.0.*"
+nom = "4.0.0"
 quick-error = "1.2.*"

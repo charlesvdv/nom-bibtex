@@ -1,5 +1,6 @@
 use std::error::Error;
-use nom::IError;
+use nom::Err;
+use nom::types::CompleteByteSlice;
 
 quick_error! {
     #[derive(Debug, PartialEq, Eq)]
@@ -7,10 +8,23 @@ quick_error! {
         Parsing (descr: String) {
             description(descr)
             display(me) -> ("Parsing error. Reason: {}", me.description())
-            from(err: IError) -> (
+            // TODO: how can we group the below two?
+            from(err: Err<CompleteByteSlice<'_>>) -> (
                 match err {
-                    IError::Incomplete(e) => format!("Incomplete: {:?}", e),
-                    IError::Error(e) => e.description().into()
+                    Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+                    Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
+                }
+            )
+            from(err: Err<&[u8]>) -> (
+                match err {
+                    Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+                    Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
+                }
+            )
+            from(err: Err<&str>) -> (
+                match err {
+                    Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+                    Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
                 }
             )
         }
