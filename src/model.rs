@@ -1,9 +1,9 @@
-use std::str;
 use error::BibtexError;
-use std::result;
 use nom::types::CompleteByteSlice;
 use parser;
 use parser::Entry;
+use std::result;
+use std::str;
 
 type Result<T> = result::Result<T, BibtexError>;
 
@@ -84,8 +84,7 @@ impl<'a> Bibtex<'a> {
             .filter_map(|v| match v {
                 &Entry::Variable(ref v) => Some(v),
                 _ => None,
-            })
-            .collect::<Vec<_>>();
+            }).collect::<Vec<_>>();
 
         for var in &variables {
             bibtex.variables.push((

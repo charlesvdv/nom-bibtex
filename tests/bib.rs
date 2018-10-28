@@ -1,8 +1,8 @@
 extern crate nom_bibtex;
 
+use nom_bibtex::Bibtex;
 use std::fs::File;
 use std::io::prelude::*;
-use nom_bibtex::Bibtex;
 
 fn read_file(filename: &str) -> String {
     let mut file = File::open(filename).unwrap();

@@ -1,5 +1,5 @@
-use std::error::Error;
 use nom::Err;
+use std::error::Error;
 
 quick_error! {
     #[derive(Debug, PartialEq, Eq)]

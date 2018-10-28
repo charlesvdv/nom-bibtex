@@ -65,8 +65,8 @@ extern crate nom;
 extern crate quick_error;
 
 pub mod error;
-mod parser;
 pub mod model;
+mod parser;
 
 pub use model::{Bibliography, Bibtex};
 pub use parser::Entry;
