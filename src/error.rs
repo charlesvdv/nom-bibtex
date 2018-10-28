@@ -1,5 +1,5 @@
 use std::error::Error;
-use nom::IError;
+use nom::Err;
 
 quick_error! {
     #[derive(Debug, PartialEq, Eq)]
@@ -7,16 +7,22 @@ quick_error! {
         Parsing (descr: String) {
             description(descr)
             display(me) -> ("Parsing error. Reason: {}", me.description())
-            from(err: IError) -> (
-                match err {
-                    IError::Incomplete(e) => format!("Incomplete: {:?}", e),
-                    IError::Error(e) => e.description().into()
-                }
-            )
         }
         StringVariableNotFound (var: String) {
             description("String variable not found.")
             display(me) -> ("{}: {}", me.description(), var)
         }
+    }
+}
+
+// We cannot use the from() from quick_error, because we need to put lifetimes that we didn't
+// define.
+impl<T> From<Err<T>> for BibtexError {
+    fn from(err: Err<T>) -> BibtexError {
+        let descr = match err {
+            Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+            Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
+        };
+        BibtexError::Parsing(descr)
     }
 }
