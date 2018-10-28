@@ -1,20 +1,11 @@
 language: rust
-rust:
-  - stable
-  - beta
-  - nightly
-
-matrix:
-  allow_failures:
-    - nightly
 
 cache: cargo
 
-install:
-  - export PATH="$PATH:$HOME/.cargo/bin"
-  - if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then which rustfmt || cargo install rustfmt-nightly; fi;
+before_script:
+  - rustup component add rustfmt-preview
 
 script:
-  - if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then cargo fmt -- --write-mode=diff; fi;
+  - cargo fmt --all -- --check
   - cargo build
   - cargo test
