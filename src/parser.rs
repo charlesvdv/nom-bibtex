@@ -129,7 +129,10 @@ named!(handle_variable<CompleteByteSlice, KeyValue>,
 named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
     map!(
         separated_pair!(
-            map_res!(call!(alpha), complete_byte_slice_to_str),
+            map_res!(
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_'),
+                complete_byte_slice_to_str
+            ),
             ws!(char!('=')),
             alt_complete!(
                 map!(call!(quoted_string), |v| vec![StringValueType::Str(v)]) |
