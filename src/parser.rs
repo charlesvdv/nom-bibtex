@@ -8,7 +8,7 @@
 //
 use model::{KeyValue, StringValueType};
 use nom::types::CompleteByteSlice;
-use nom::{alpha, is_digit, Err, ErrorKind, IResult};
+use nom::{alpha, is_digit, Err, ErrorKind, IResult, is_alphabetic};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -129,7 +129,10 @@ named!(handle_variable<CompleteByteSlice, KeyValue>,
 named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
     map!(
         separated_pair!(
-            map_res!(call!(alpha), complete_byte_slice_to_str),
+            map_res!(
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_'),
+                complete_byte_slice_to_str
+            ),
             ws!(char!('=')),
             alt_complete!(
                 map!(call!(quoted_string), |v| vec![StringValueType::Str(v)]) |
@@ -212,14 +215,22 @@ named!(abbreviation_string<CompleteByteSlice, Vec<StringValueType>>,
     complete!(separated_nonempty_list!(
         ws!(char!('#')),
         alt!(
-            map!(map_res!(call!(alpha), complete_byte_slice_to_str), |v| StringValueType::Abbreviation(v)) |
+            map!(map_res!(take_while1!(|c: u8| is_alphabetic(c) || c == b'_'), complete_byte_slice_to_str), |v| StringValueType::Abbreviation(v)) |
             map!(call!(quoted_string), |v| StringValueType::Str(v))
         )
     ))
 );
 
 named!(abbreviation_only<CompleteByteSlice, Vec<StringValueType>>,
-    ws!(map!(map_res!(call!(alpha), complete_byte_slice_to_str), |v| vec![StringValueType::Abbreviation(v)]))
+    ws!(
+        map!(
+            map_res!(
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_'),
+                complete_byte_slice_to_str
+            ),
+            |v| vec![StringValueType::Abbreviation(v)]
+        )
+    )
 );
 
 // Only used for bibliography tags.
@@ -297,6 +308,7 @@ fn quoted_string<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<
     Ok((CompleteByteSlice(&input[i + 1..]), value))
 }
 
+
 #[cfg(test)]
 mod tests {
     // Each time we are using `separated_list`, we need to add a trailing
@@ -326,6 +338,40 @@ mod tests {
         let tags = vec![
             KeyValue::new("author", vec![StringValueType::Str("Oren Patashnik")]),
             KeyValue::new("title", vec![StringValueType::Str("BIBTEXing")]),
+            KeyValue::new("year", vec![StringValueType::Str("1988")]),
+        ];
+        assert_eq!(
+            entry_with_type(CompleteByteSlice(bib_str)),
+            Ok((
+                CompleteByteSlice(b""),
+                Entry::Bibliography("misc", "patashnik-bibtexing", tags)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_entry_with_journal() {
+        assert_eq!(
+            entry(CompleteByteSlice(b" comment")),
+            Ok((CompleteByteSlice(b""), Entry::Comment("comment")))
+        );
+
+        let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
+        assert_eq!(
+            entry(CompleteByteSlice(b" @ StrIng { key = \"value\" }")),
+            Ok((CompleteByteSlice(b""), Entry::Variable(kv)))
+        );
+
+        let bib_str = b"@misc{ patashnik-bibtexing,
+           author = \"Oren Patashnik\",
+           title = \"BIBTEXing\",
+           journal = SOME_ABBREV,
+           year = \"1988\" }";
+
+        let tags = vec![
+            KeyValue::new("author", vec![StringValueType::Str("Oren Patashnik")]),
+            KeyValue::new("title", vec![StringValueType::Str("BIBTEXing")]),
+            KeyValue::new("journal", vec![StringValueType::Abbreviation("SOME_ABBREV")]),
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
@@ -562,6 +608,14 @@ mod tests {
                 vec![StringValueType::Abbreviation("var")]
             ))
         );
+
+        assert_eq!(
+            abbreviation_only(CompleteByteSlice(b" IEEE_J_CAD ")),
+            Ok((
+                CompleteByteSlice(b""),
+                vec![StringValueType::Abbreviation("IEEE_J_CAD")]
+            ))
+        );
     }
 
     #[test]
@@ -598,6 +652,18 @@ mod tests {
         assert_eq!(
             quoted_string(CompleteByteSlice(b"\"Simon {\"}the {saint\"} Templar\"")),
             Ok((CompleteByteSlice(b""), "Simon {\"}the {saint\"} Templar"))
+        );
+    }
+
+    #[test]
+    fn test_variable_with_underscore() {
+        let kv1 = KeyValue::new("IEEE_J_ANNE", vec![StringValueType::Str("{IEEE} Trans. Aeronaut. Navig. Electron.")]);
+
+        assert_eq!(
+            variable(CompleteByteSlice(
+                b"@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
+            )),
+            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
         );
     }
 }
