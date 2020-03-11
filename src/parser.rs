@@ -651,4 +651,16 @@ mod tests {
             Ok((CompleteByteSlice(b""), "Simon {\"}the {saint\"} Templar"))
         );
     }
+
+    #[test]
+    fn test_variable_with_underscore() {
+        let kv1 = KeyValue::new("IEEE_J_ANNE", vec![StringValueType::Str("{IEEE} Trans. Aeronaut. Navig. Electron.")]);
+
+        assert_eq!(
+            variable(CompleteByteSlice(
+                b"@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
+            )),
+            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+        );
+    }
 }
