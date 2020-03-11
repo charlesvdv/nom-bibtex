@@ -130,7 +130,7 @@ named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
     map!(
         separated_pair!(
             map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_'),
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
                 complete_byte_slice_to_str
             ),
             ws!(char!('=')),
@@ -215,7 +215,10 @@ named!(abbreviation_string<CompleteByteSlice, Vec<StringValueType>>,
     complete!(separated_nonempty_list!(
         ws!(char!('#')),
         alt!(
-            map!(map_res!(take_while1!(|c: u8| is_alphabetic(c) || c == b'_'), complete_byte_slice_to_str), |v| StringValueType::Abbreviation(v)) |
+            map!(map_res!(
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
+                complete_byte_slice_to_str
+            ), |v| StringValueType::Abbreviation(v)) |
             map!(call!(quoted_string), |v| StringValueType::Str(v))
         )
     ))
@@ -225,7 +228,7 @@ named!(abbreviation_only<CompleteByteSlice, Vec<StringValueType>>,
     ws!(
         map!(
             map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_'),
+                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
                 complete_byte_slice_to_str
             ),
             |v| vec![StringValueType::Abbreviation(v)]
@@ -608,7 +611,10 @@ mod tests {
                 vec![StringValueType::Abbreviation("var")]
             ))
         );
+    }
 
+    #[test]
+    fn test_abbreviation_with_underscore() {
         assert_eq!(
             abbreviation_only(CompleteByteSlice(b" IEEE_J_CAD ")),
             Ok((
@@ -664,6 +670,29 @@ mod tests {
                 b"@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
             )),
             Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+        );
+    }
+
+    #[test]
+    fn test_dashes_in_variables_are_supported() {
+        let kv1 = KeyValue::new(
+            "IEEE_J_B-ME",
+            vec![StringValueType::Str("{IEEE} Trans. Bio-Med. Eng.")]
+        );
+
+        assert_eq!(
+            variable(CompleteByteSlice(
+                b"@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}"
+            )),
+            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+        );
+
+        assert_eq!(
+            abbreviation_only(CompleteByteSlice(b" IEE_j_B-ME ")),
+            Ok((
+                CompleteByteSlice(b""),
+                vec![StringValueType::Abbreviation("IEE_j_B-ME")]
+            ))
         );
     }
 }
