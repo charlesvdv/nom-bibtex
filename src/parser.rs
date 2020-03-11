@@ -23,9 +23,9 @@ named!(pub entries<CompleteByteSlice, Vec<Entry>>,
     many1!(entry)
 );
 
-/// Parse any entry in a bibtex file.
-/// A good entry normally starts with a @ otherwise, it's
-/// considered as a comment.
+// Parse any entry in a bibtex file.
+// A good entry normally starts with a @ otherwise, it's
+// considered as a comment.
 named!(pub entry<CompleteByteSlice, Entry>,
     ws!(
         alt!(
@@ -41,7 +41,7 @@ named!(pub entry<CompleteByteSlice, Entry>,
     )
 );
 
-/// Handle data beginning without an @ which are considered comments.
+// Handle data beginning without an @ which are considered comments.
 named!(no_type_comment<CompleteByteSlice, &str>,
     map!(
         map_res!(
@@ -56,7 +56,7 @@ fn complete_byte_slice_to_str<'a>(s: CompleteByteSlice<'a>) -> Result<&'a str, s
     str::from_utf8(s.0)
 }
 
-/// Parse any entry which starts with a @.
+// Parse any entry which starts with a @.
 fn entry_with_type<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, Entry> {
     let entry_type = peeked_entry_type(input).unwrap();
 
@@ -68,16 +68,16 @@ fn entry_with_type<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlic
     }
 }
 
-/// Handle a comment of the format:
-/// @Comment { my comment }
+// Handle a comment of the format:
+// @Comment { my comment }
 named!(type_comment<CompleteByteSlice, Entry>, do_parse!(
     entry_type >>
     comment: call!(bracketed_string) >>
     (Entry::Comment(comment))
 ));
 
-/// Handle a preamble of the format:
-/// @Preamble { my preamble }
+// Handle a preamble of the format:
+// @Preamble { my preamble }
 named!(preamble<CompleteByteSlice, Entry>, do_parse!(
     entry_type >>
     ws!(char!('{')) >>
@@ -98,8 +98,8 @@ named!(preamble<CompleteByteSlice, Entry>, do_parse!(
     (Entry::Preamble(preamble))
 ));
 
-/// Handle a string variable from the bibtex format:
-/// @String (key = "value") or @String {key = "value"}
+// Handle a string variable from the bibtex format:
+// @String (key = "value") or @String {key = "value"}
 named!(variable<CompleteByteSlice, Entry>, do_parse!(
     entry_type >>
     key_val: call!(handle_variable) >>
@@ -107,7 +107,7 @@ named!(variable<CompleteByteSlice, Entry>, do_parse!(
     (Entry::Variable(key_val))
 ));
 
-/// String variable can be delimited by brackets or parenthesis.
+// String variable can be delimited by brackets or parenthesis.
 named!(handle_variable<CompleteByteSlice, KeyValue>,
     ws!(
         alt!(
@@ -124,8 +124,8 @@ named!(handle_variable<CompleteByteSlice, KeyValue>,
     )
 );
 
-/// Parse key value pair which has the form:
-/// key="value"
+// Parse key value pair which has the form:
+// key="value"
 named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
     map!(
         separated_pair!(
@@ -141,11 +141,11 @@ named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
     )
 );
 
-/// Handle a bibliography entry of the format:
-/// @entry_type { citation_key,
-///     tag1,
-///     tag2
-/// }
+// Handle a bibliography entry of the format:
+// @entry_type { citation_key,
+//     tag1,
+//     tag2
+// }
 named!(pub bibliography_entry<CompleteByteSlice, Entry>, do_parse!(
     entry_t: entry_type >>
     ws!(char!('{')) >>
@@ -156,7 +156,7 @@ named!(pub bibliography_entry<CompleteByteSlice, Entry>, do_parse!(
     (Entry::Bibliography(entry_t, citation_key, tags))
 ));
 
-/// Parse all the tags used by one bibliography entry separated by a comma.
+// Parse all the tags used by one bibliography entry separated by a comma.
 named!(bib_tags<CompleteByteSlice, Vec<KeyValue<'_>>>,
     separated_list!(
         ws!(char!(',')),
@@ -181,10 +181,10 @@ named!(bib_tags<CompleteByteSlice, Vec<KeyValue<'_>>>,
     )
 );
 
-/// Parse a bibtex entry type which looks like:
-/// @type{ ...
-///
-/// But don't consume the last bracket.
+// Parse a bibtex entry type which looks like:
+// @type{ ...
+//
+// But don't consume the last bracket.
 named!(entry_type<CompleteByteSlice, &str>,
     delimited!(
         char!('@'),
@@ -200,8 +200,8 @@ named!(entry_type<CompleteByteSlice, &str>,
     )
 );
 
-/// Same as entry_type but with peek so it doesn't consume the
-/// entry type.
+// Same as entry_type but with peek so it doesn't consume the
+// entry type.
 named!(peeked_entry_type<CompleteByteSlice, &str>,
     peek!(
         entry_type
@@ -222,7 +222,7 @@ named!(abbreviation_only<CompleteByteSlice, Vec<StringValueType>>,
     ws!(map!(map_res!(call!(alpha), complete_byte_slice_to_str), |v| vec![StringValueType::Abbreviation(v)]))
 );
 
-/// Only used for bibliography tags.
+// Only used for bibliography tags.
 fn bracketed_string<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, &str> {
     let input = &input;
     // We are not in a bracketed_string.
