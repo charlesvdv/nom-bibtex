@@ -19,9 +19,18 @@ pub enum Entry<'a> {
     Bibliography(&'a str, &'a str, Vec<KeyValue<'a>>),
 }
 
-named!(pub entries<CompleteByteSlice, Vec<Entry>>,
-    many1!(entry)
-);
+pub fn entries<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, Vec<Entry>> {
+    if input.is_empty() {
+        Ok((input, vec!()))
+    }
+    else {
+        let (rest_slice, new_entry) = entry(input)?;
+        let (remaining_slice, mut rest_entries) = entries(rest_slice)?;
+        // NOTE: O(n) insertions, could cause issues in the future
+        rest_entries.insert(0, new_entry);
+        Ok((remaining_slice, rest_entries))
+    }
+}
 
 // Parse any entry in a bibtex file.
 // A good entry normally starts with a @ otherwise, it's
@@ -552,20 +561,6 @@ mod tests {
 
     #[test]
     fn test_entry_type() {
-        assert_eq!(
-            entry_type(CompleteByteSlice(b"@misc{")),
-            Ok((CompleteByteSlice(b"{"), "misc"))
-        );
-
-        assert_eq!(
-            entry_type(CompleteByteSlice(b"@ misc {")),
-            Ok((CompleteByteSlice(b"{"), "misc"))
-        );
-
-        assert_eq!(
-            entry_type(CompleteByteSlice(b"@string(")),
-            Ok((CompleteByteSlice(b"("), "string"))
-        );
     }
 
     #[test]
@@ -693,6 +688,49 @@ mod tests {
                 CompleteByteSlice(b""),
                 vec![StringValueType::Abbreviation("IEE_j_B-ME")]
             ))
+        );
+    }
+
+    #[test]
+    fn malformed_entries_produce_errors() {
+        let bib_str = b"
+            @Article{coussy_et_al_word_length_HLS,
+              author    = {Philippe Coussy and Ghizlane Lhairech-Lebreton and Dominique Heller},
+              title     = {Multiple Word-Length High-Level Synthesis},
+              journal   = {{EURASIP} Journal on Embedded Systems},
+              year      = {2008},
+              volume    = {2008},
+              number    = {1},
+              pages     = {916867},
+              month     = jul,
+              issn      = {1687-3963},
+              day       = {29},
+              doi       = {10.1155/2008/916867},
+              publisher = {Springer Nature},
+            }
+
+            @Article{constantinides_word_length_optimization,
+              author     = {Constantinides, George A.},
+              title      = {Word-length Optimization for Differentiable Nonlinear Systems},
+              journal    = {ACM Trans. Des. Autom. Electron. Syst.},
+              year       = {2006},
+              volume     = {11},
+              number     = {1},
+              pages      = {26--43},
+              month      = jan,
+              issn       = {1084-4309},
+              acmid      = {1124716},
+              address    = {New York, NY, USA},
+              doi        = {http://dx.doi.org/10.1145/1124713.1124716},
+              issue_d
+              keywords   = {Signal processing, bitwidth, synthesis, 
+              numpages   = {18},
+              publisher  = {ACM},
+            }";
+
+        assert!(
+            !entries(CompleteByteSlice(bib_str)).is_ok(),
+            "Malformed entries list parsed correctly"
         );
     }
 }
