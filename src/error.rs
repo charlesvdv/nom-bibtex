@@ -19,10 +19,23 @@ quick_error! {
 // define.
 impl<T> From<Err<T>> for BibtexError {
     fn from(err: Err<T>) -> BibtexError {
+        unimplemented!();
+        // let descr = match err {
+        //     Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+        //     Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
+        // };
+        // BibtexError::Parsing(descr)
+    }
+}
+
+/*
+impl BibtexError {
+    pub fn from_with_context<T>(err: Err<T>, context: &'static str) -> BibtexError {
         let descr = match err {
             Err::Incomplete(e) => format!("Incomplete: {:?}", e),
-            Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
+            Err::Error(e) | Err::Failure(e) => e.add_context().description().into(),
         };
         BibtexError::Parsing(descr)
     }
 }
+*/
