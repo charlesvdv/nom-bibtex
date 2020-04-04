@@ -1,4 +1,5 @@
 use nom::Err;
+use nom::error::ErrorKind;
 use std::error::Error;
 
 quick_error! {
@@ -17,25 +18,14 @@ quick_error! {
 
 // We cannot use the from() from quick_error, because we need to put lifetimes that we didn't
 // define.
-impl<T> From<Err<T>> for BibtexError {
-    fn from(err: Err<T>) -> BibtexError {
-        unimplemented!();
-        // let descr = match err {
-        //     Err::Incomplete(e) => format!("Incomplete: {:?}", e),
-        //     Err::Error(e) | Err::Failure(e) => e.into_error_kind().description().into(),
-        // };
-        // BibtexError::Parsing(descr)
-    }
-}
-
-/*
-impl BibtexError {
-    pub fn from_with_context<T>(err: Err<T>, context: &'static str) -> BibtexError {
+impl<'a> From<Err<(&str, ErrorKind)>> for BibtexError {
+    fn from(err: Err<(&str, ErrorKind)>) -> BibtexError {
         let descr = match err {
             Err::Incomplete(e) => format!("Incomplete: {:?}", e),
-            Err::Error(e) | Err::Failure(e) => e.add_context().description().into(),
+            Err::Error((_, e)) | Err::Failure((_, e)) => {
+                e.description().into()
+            },
         };
         BibtexError::Parsing(descr)
     }
 }
-*/

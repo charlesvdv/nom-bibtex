@@ -7,13 +7,10 @@
 // #![allow(dead_code)]
 //
 use model::{KeyValue, StringValueType};
-use nom::{Err, IResult};
+use nom::IResult;
 use nom::error::ErrorKind;
-use nom::character::{
-    is_digit,
-    is_alphabetic,
-    complete::{alpha0, multispace0},
-};
+use nom::character::complete::{alpha0, multispace0, digit1};
+use nom::AsChar;
 use nom::bytes::complete::is_not;
 use std::str;
 
@@ -27,7 +24,7 @@ pub enum Entry<'a> {
 
 
 
-pub fn entries<'a>(input: &[u8]) -> IResult<&[u8], Vec<Entry>> {
+pub fn entries<'a>(input: &str) -> IResult<&str, Vec<Entry>> {
     if input.is_empty() {
         Ok((input, vec!()))
     }
@@ -43,7 +40,7 @@ pub fn entries<'a>(input: &[u8]) -> IResult<&[u8], Vec<Entry>> {
 // Parse any entry in a bibtex file.
 // A good entry normally starts with a @ otherwise, it's
 // considered as a comment.
-named!(pub entry<&[u8], Entry>,
+named!(pub entry<&str, Entry>,
     preceded!(
         multispace0,
         alt!(
@@ -60,7 +57,7 @@ named!(pub entry<&[u8], Entry>,
 );
 
 // Handle data beginning without an @ which are considered comments.
-named!(no_type_comment<&[u8], &str>,
+named!(no_type_comment<&str, &str>,
     map!(
         map_res!(
             is_not("@"),
@@ -70,12 +67,13 @@ named!(no_type_comment<&[u8], &str>,
     )
 );
 
-fn complete_byte_slice_to_str<'a>(s: &'a [u8]) -> Result<&'a str, str::Utf8Error> {
-    str::from_utf8(s)
+// TODO: Remove this function
+fn complete_byte_slice_to_str<'a>(s: &'a str) -> Result<&'a str, str::Utf8Error> {
+    Ok(s)
 }
 
 // Parse any entry which starts with a @.
-fn entry_with_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], Entry> {
+fn entry_with_type<'a>(input: &'a str) -> IResult<&'a str, Entry> {
     let entry_type = peeked_entry_type(input).unwrap();
 
     match entry_type.1.to_lowercase().as_ref() {
@@ -88,7 +86,7 @@ fn entry_with_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], Entry> {
 
 // Handle a comment of the format:
 // @Comment { my comment }
-named!(type_comment<&[u8], Entry>, do_parse!(
+named!(type_comment<&str, Entry>, do_parse!(
     entry_type >>
     comment: call!(bracketed_string) >>
     (Entry::Comment(comment))
@@ -96,7 +94,7 @@ named!(type_comment<&[u8], Entry>, do_parse!(
 
 // Handle a preamble of the format:
 // @Preamble { my preamble }
-named!(preamble<&[u8], Entry>, do_parse!(
+named!(preamble<&str, Entry>, do_parse!(
     entry_type >>
     preceded!(multispace0, char!('{')) >>
     preamble: alt!(
@@ -118,7 +116,7 @@ named!(preamble<&[u8], Entry>, do_parse!(
 
 // Handle a string variable from the bibtex format:
 // @String (key = "value") or @String {key = "value"}
-named!(variable<&[u8], Entry>, do_parse!(
+named!(variable<&str, Entry>, do_parse!(
     entry_type >>
     key_val: call!(handle_variable) >>
     alt!(char!('}') | char!(')')) >>
@@ -126,7 +124,7 @@ named!(variable<&[u8], Entry>, do_parse!(
 ));
 
 // String variable can be delimited by brackets or parenthesis.
-named!(handle_variable<&[u8], KeyValue>,
+named!(handle_variable<&str, KeyValue>,
         alt!(
            delimited!(
                preceded!(multispace0, char!('{')),
@@ -142,13 +140,13 @@ named!(handle_variable<&[u8], KeyValue>,
 
 // Parse key value pair which has the form:
 // key="value"
-named!(variable_key_value_pair<&[u8], KeyValue>,
+named!(variable_key_value_pair<&str, KeyValue>,
     map!(
         separated_pair!(
             preceded!(
                 multispace0,
                 map_res!(
-                    take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
+                    take_while1!(|c: char| c.is_alpha() || c == '_' || c == '-'),
                     complete_byte_slice_to_str
                 )
             ),
@@ -171,7 +169,7 @@ named!(variable_key_value_pair<&[u8], KeyValue>,
 //     tag1,
 //     tag2
 // }
-named!(pub bibliography_entry<&[u8], Entry>, do_parse!(
+named!(pub bibliography_entry<&str, Entry>, do_parse!(
     entry_t: entry_type >>
     preceded!(multispace0, char!('{')) >>
     citation_key: preceded!(multispace0, map_res!(take_until!(","), complete_byte_slice_to_str)) >>
@@ -183,7 +181,7 @@ named!(pub bibliography_entry<&[u8], Entry>, do_parse!(
 ));
 
 // Parse all the tags used by one bibliography entry separated by a comma.
-named!(bib_tags<&[u8], Vec<KeyValue<'_>>>,
+named!(bib_tags<&str, Vec<KeyValue<'_>>>,
     separated_list!(
         delimited!(multispace0, char!(','), multispace0),
         map!(
@@ -196,7 +194,7 @@ named!(bib_tags<&[u8], Vec<KeyValue<'_>>>,
                     map!(call!(quoted_string), |v| vec![StringValueType::Str(v)]) |
                     map!(call!(bracketed_string), |v| vec![StringValueType::Str(v)]) |
                     map!(
-                        map_res!(take_while1!(is_digit), complete_byte_slice_to_str),
+                        map_res!(digit1, complete_byte_slice_to_str),
                         |v| vec![StringValueType::Str(v)]
                     ) |
                     call!(abbreviation_only)
@@ -211,7 +209,7 @@ named!(bib_tags<&[u8], Vec<KeyValue<'_>>>,
 // @type{ ...
 //
 // But don't consume the last bracket.
-named!(entry_type<&[u8], &str>,
+named!(entry_type<&str, &str>,
     delimited!(
         char!('@'),
         map_res!(
@@ -231,20 +229,20 @@ named!(entry_type<&[u8], &str>,
 
 // Same as entry_type but with peek so it doesn't consume the
 // entry type.
-named!(peeked_entry_type<&[u8], &str>,
+named!(peeked_entry_type<&str, &str>,
     peek!(
         entry_type
     )
 );
 
-named!(abbreviation_string<&[u8], Vec<StringValueType>>,
+named!(abbreviation_string<&str, Vec<StringValueType>>,
     separated_nonempty_list!(
         preceded!(multispace0, char!('#')),
         preceded!(
             multispace0,
             alt!(
                 map!(map_res!(
-                    take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
+                    take_while1!(|c: char| c.is_alpha() || c == '_' || c == '-'),
                     complete_byte_slice_to_str
                 ), |v| StringValueType::Abbreviation(v)) |
                 map!(call!(quoted_string), |v| StringValueType::Str(v))
@@ -253,12 +251,12 @@ named!(abbreviation_string<&[u8], Vec<StringValueType>>,
     )
 );
 
-named!(abbreviation_only<&[u8], Vec<StringValueType>>,
+named!(abbreviation_only<&str, Vec<StringValueType>>,
     delimited!(
         multispace0,
         map!(
             map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
+                take_while1!(|c: char| c.is_alpha() || c == '_' || c == '-'),
                 complete_byte_slice_to_str
             ),
             |v| vec![StringValueType::Abbreviation(v)]
@@ -268,24 +266,30 @@ named!(abbreviation_only<&[u8], Vec<StringValueType>>,
 );
 
 // Only used for bibliography tags.
-fn bracketed_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
-    let input = &input;
+fn bracketed_string<'a>(input: &'a str) -> IResult<&'a str, &str> {
     // We are not in a bracketed_string.
-    if input[0] as char != '{' {
-        return Err(nom::Err::Error((input, ErrorKind::Tag)));
+    match input.chars().nth(0) {
+        Some('{') => {},
+        Some(_) => {
+            return Err(nom::Err::Error((input, ErrorKind::Tag)));
+        }
+        None => {
+            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+        }
     }
     let mut brackets_queue = 0;
 
-    let mut i = 0;
-    loop {
-        i += 1;
-        match input[i] as char {
+    let mut last_idx = 0;
+    for (i, c) in input.char_indices().skip(1) {
+        last_idx = i;
+        match c as char {
             '{' => brackets_queue += 1,
             '}' => if brackets_queue == 0 {
                 break;
             } else {
                 brackets_queue -= 1;
             },
+            // TODO: Verify that this should be here
             '"' => if brackets_queue == 0 {
                 return Err(nom::Err::Error((input, ErrorKind::Tag)));
             },
@@ -295,21 +299,28 @@ fn bracketed_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
             _ => continue,
         }
     }
-    let value = str::from_utf8(&input[1..i]).expect("Unable to parse char sequence");
-    Ok((&input[i + 1..], str::trim(value)))
+    let value = &input[1..last_idx];
+    // NOTE: This +1 might be slightly unsafe as we are indexing strings. However,
+    // the last char is expected to be '}' which is one byte large
+    Ok((&input[last_idx + 1..], str::trim(value)))
 }
 
-fn quoted_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
-    let input = input.as_ref();
-    if input[0] as char != '"' {
-        return Err(nom::Err::Error((input, ErrorKind::Tag)));
+fn quoted_string<'a>(input: &'a str) -> IResult<&'a str, &str> {
+    match input.chars().nth(0) {
+        Some('"') => {},
+        Some(_) => {
+            return Err(nom::Err::Error((input, ErrorKind::Tag)));
+        }
+        None => {
+            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+        }
     }
 
     let mut brackets_queue = 0;
-    let mut i = 0;
-    loop {
-        i += 1;
-        match input[i] as char {
+    let mut last_idx = 0;
+    for (i, c) in input.char_indices().skip(1) {
+        last_idx = i;
+        match c as char {
             '{' => brackets_queue += 1,
             '}' => {
                 brackets_queue -= 1;
@@ -323,8 +334,7 @@ fn quoted_string<'a>(input: &'a [u8]) -> IResult<&'a [u8], &str> {
             _ => continue,
         }
     }
-    let value = str::from_utf8(&input[1..i]).expect("Unable to parse char sequence");
-    Ok((&input[i + 1..], value))
+    Ok((&input[last_idx + 1..], &input[1..last_idx]))
 }
 
 
@@ -339,17 +349,17 @@ mod tests {
     #[test]
     fn test_entry() {
         assert_eq!(
-            entry(b" comment"),
-            Ok((&b""[..], Entry::Comment("comment")))
+            entry(" comment"),
+            Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry(b" @ StrIng { key = \"value\" }"),
-            Ok((&b""[..], Entry::Variable(kv)))
+            entry(" @ StrIng { key = \"value\" }"),
+            Ok(("", Entry::Variable(kv)))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\" }";
@@ -362,7 +372,7 @@ mod tests {
         assert_eq!(
             entry_with_type(bib_str),
             Ok((
-                &b""[..],
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -371,17 +381,17 @@ mod tests {
     #[test]
     fn test_entry_with_journal() {
         assert_eq!(
-            entry(b" comment"),
-            Ok((&b""[..], Entry::Comment("comment")))
+            entry(" comment"),
+            Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry(b" @ StrIng { key = \"value\" }"),
-            Ok((&b""[..], Entry::Variable(kv)))
+            entry(" @ StrIng { key = \"value\" }"),
+            Ok(("", Entry::Variable(kv)))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            journal = SOME_ABBREV,
@@ -396,7 +406,7 @@ mod tests {
         assert_eq!(
             entry_with_type(bib_str),
             Ok((
-                &b""[..],
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -405,32 +415,32 @@ mod tests {
     #[test]
     fn test_no_type_comment() {
         assert_eq!(
-            no_type_comment(b"test@"),
-            Ok((&b"@"[..], "test"))
+            no_type_comment("test@"),
+            Ok(("@", "test"))
         );
         assert_eq!(
-            no_type_comment(b"test"),
-            Ok((&b""[..], "test"))
+            no_type_comment("test"),
+            Ok(("", "test"))
         );
     }
 
     #[test]
     fn test_entry_with_type() {
         assert_eq!(
-            entry_with_type(b"@Comment{test}"),
-            Ok((&b""[..], Entry::Comment("test")))
+            entry_with_type("@Comment{test}"),
+            Ok(("", Entry::Comment("test")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry_with_type(b"@String{key=\"value\"}"),
-            Ok((&b""[..], Entry::Variable(kv)))
+            entry_with_type("@String{key=\"value\"}"),
+            Ok(("", Entry::Variable(kv)))
         );
 
         assert_eq!(
-            entry_with_type(b"@preamble{name # \"'s preamble\"}"),
+            entry_with_type("@preamble{name # \"'s preamble\"}"),
             Ok((
-                &b""[..],
+                "",
                 Entry::Preamble(vec![
                     StringValueType::Abbreviation("name"),
                     StringValueType::Str("'s preamble")
@@ -438,7 +448,7 @@ mod tests {
             ))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\" }";
@@ -451,7 +461,7 @@ mod tests {
         assert_eq!(
             entry_with_type(bib_str),
             Ok((
-                &b""[..],
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -460,17 +470,17 @@ mod tests {
     #[test]
     fn test_type_comment() {
         assert_eq!(
-            type_comment(b"@Comment{test}"),
-            Ok((&b""[..], Entry::Comment("test")))
+            type_comment("@Comment{test}"),
+            Ok(("", Entry::Comment("test")))
         );
     }
 
     #[test]
     fn test_preamble() {
         assert_eq!(
-            preamble(b"@preamble{my preamble}"),
+            preamble("@preamble{my preamble}"),
             Ok((
-                &b""[..],
+                "",
                 Entry::Preamble(vec![StringValueType::Str("my preamble")])
             ))
         );
@@ -489,18 +499,18 @@ mod tests {
         );
 
         assert_eq!(
-            variable(b"@string{key=\"value\"}"),
-            Ok((&b""[..], Entry::Variable(kv1)))
+            variable("@string{key=\"value\"}"),
+            Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            variable(b"@string( key=\"value\" )"),
-            Ok((&b""[..], Entry::Variable(kv2)))
+            variable("@string( key=\"value\" )"),
+            Ok(("", Entry::Variable(kv2)))
         );
 
         assert_eq!(
-            variable(b"@string( key=varone # vartwo)"),
-            Ok((&b""[..], Entry::Variable(kv3)))
+            variable("@string( key=varone # vartwo)"),
+            Ok(("", Entry::Variable(kv3)))
         );
     }
 
@@ -515,14 +525,14 @@ mod tests {
         );
 
         assert_eq!(
-            variable_key_value_pair(b"key = varone # vartwo,"),
-            Ok((&b","[..], kv))
+            variable_key_value_pair("key = varone # vartwo,"),
+            Ok((",", kv))
         );
     }
 
     #[test]
     fn test_bibliography_entry() {
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\", }";
@@ -535,7 +545,7 @@ mod tests {
         assert_eq!(
             bibliography_entry(bib_str),
             Ok((
-                &b""[..],
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -543,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_bib_tags() {
-        let tags_str = b"author= \"Oren Patashnik\",
+        let tags_str = "author= \"Oren Patashnik\",
             year=1988,
             note= var # \"str\",
             title= { My new book }}";
@@ -562,16 +572,16 @@ mod tests {
         ];
         assert_eq!(
             bib_tags(tags_str),
-            Ok((&b"}"[..], result))
+            Ok(("}", result))
         );
     }
 
     #[test]
     fn test_abbreviation_string() {
         assert_eq!(
-            abbreviation_string(b"var # \"string\","),
+            abbreviation_string("var # \"string\","),
             Ok((
-                &b","[..],
+                ",",
                 vec![
                     StringValueType::Abbreviation("var"),
                     StringValueType::Str("string"),
@@ -579,9 +589,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string(b"\"string\" # var,"),
+            abbreviation_string("\"string\" # var,"),
             Ok((
-                &b","[..],
+                ",",
                 vec![
                     StringValueType::Str("string"),
                     StringValueType::Abbreviation("var"),
@@ -589,9 +599,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string(b"string # var,"),
+            abbreviation_string("string # var,"),
             Ok((
-                &b","[..],
+                ",",
                 vec![
                     StringValueType::Abbreviation("string"),
                     StringValueType::Abbreviation("var"),
@@ -603,9 +613,9 @@ mod tests {
     #[test]
     fn test_abbreviation_only() {
         assert_eq!(
-            abbreviation_only(b" var "),
+            abbreviation_only(" var "),
             Ok((
-                &b""[..],
+                "",
                 vec![StringValueType::Abbreviation("var")]
             ))
         );
@@ -614,9 +624,9 @@ mod tests {
     #[test]
     fn test_abbreviation_with_underscore() {
         assert_eq!(
-            abbreviation_only(b" IEEE_J_CAD "),
+            abbreviation_only(" IEEE_J_CAD "),
             Ok((
-                &b""[..],
+                "",
                 vec![StringValueType::Abbreviation("IEEE_J_CAD")]
             ))
         );
@@ -625,37 +635,37 @@ mod tests {
     #[test]
     fn test_bracketed_string() {
         assert_eq!(
-            bracketed_string(b"{ test }"),
-            Ok((&b""[..], "test"))
+            bracketed_string("{ test }"),
+            Ok(("", "test"))
         );
         assert_eq!(
-            bracketed_string(b"{ {test} }"),
-            Ok((&b""[..], "{test}"))
+            bracketed_string("{ {test} }"),
+            Ok(("", "{test}"))
         );
-        assert!(bracketed_string(b"{ @{test} }").is_err());
+        assert!(bracketed_string("{ @{test} }").is_err());
     }
 
     #[test]
     fn test_quoted_string() {
         assert_eq!(
-            quoted_string(b"\"test\""),
-            Ok((&b""[..], "test"))
+            quoted_string("\"test\""),
+            Ok(("", "test"))
         );
         assert_eq!(
-            quoted_string(b"\"test \""),
-            Ok((&b""[..], "test "))
+            quoted_string("\"test \""),
+            Ok(("", "test "))
         );
         assert_eq!(
-            quoted_string(b"\"{\"test\"}\""),
-            Ok((&b""[..], "{\"test\"}"))
+            quoted_string("\"{\"test\"}\""),
+            Ok(("", "{\"test\"}"))
         );
         assert_eq!(
-            quoted_string(b"\"A {bunch {of} braces {in}} title\""),
-            Ok((&b""[..], "A {bunch {of} braces {in}} title"))
+            quoted_string("\"A {bunch {of} braces {in}} title\""),
+            Ok(("", "A {bunch {of} braces {in}} title"))
         );
         assert_eq!(
-            quoted_string(b"\"Simon {\"}the {saint\"} Templar\""),
-            Ok((&b""[..], "Simon {\"}the {saint\"} Templar"))
+            quoted_string("\"Simon {\"}the {saint\"} Templar\""),
+            Ok(("", "Simon {\"}the {saint\"} Templar"))
         );
     }
 
@@ -665,9 +675,9 @@ mod tests {
 
         assert_eq!(
             variable(
-                b"@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
+                "@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
             ),
-            Ok((&b""[..], Entry::Variable(kv1)))
+            Ok(("", Entry::Variable(kv1)))
         );
     }
 
@@ -680,15 +690,15 @@ mod tests {
 
         assert_eq!(
             variable(
-                b"@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}"
+                "@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}"
             ),
-            Ok((&b""[..], Entry::Variable(kv1)))
+            Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            abbreviation_only(b" IEE_j_B-ME "),
+            abbreviation_only(" IEE_j_B-ME "),
             Ok((
-                &b""[..],
+                "",
                 vec![StringValueType::Abbreviation("IEE_j_B-ME")]
             ))
         );
@@ -696,7 +706,7 @@ mod tests {
 
     #[test]
     fn malformed_entries_produce_errors() {
-        let bib_str = b"
+        let bib_str = "
             @Article{coussy_et_al_word_length_HLS,
               author    = {Philippe Coussy and Ghizlane Lhairech-Lebreton and Dominique Heller},
               title     = {Multiple Word-Length High-Level Synthesis},

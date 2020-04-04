@@ -51,7 +51,7 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        match parser::entries(bibtex.as_bytes()) {
+        match parser::entries(bibtex) {
             Ok((_, v)) => Ok(v),
             Err(e) => Err(From::from(e)),
         }
