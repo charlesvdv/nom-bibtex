@@ -40,10 +40,15 @@ use nom::{
 use nom::character::complete::char as _char;
 use std::str;
 use nom_locate::LocatedSpan;
-use nom_tracable::{tracable_parser, TracableInfo};
+#[cfg(feature = "trace")]
+use nom_tracable::tracable_parser;
+use nom_tracable::TracableInfo;
 
 
-pub type Span<'a, X=()> = LocatedSpan<&'a str, X>;
+pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
+pub fn mkspan<'a>(s: &'a str) -> Span<'a> {
+    Span::new_extra(s, TracableInfo::new())
+}
 
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,11 +65,13 @@ macro_rules! def_parser {
     ($vis:vis $name:ident(
         $input_name:ident$(,)? $($arg:ident, $type:ty),*
     ) -> $ret:ty; $body:tt) => {
-        #[tracable_parser]
+        // NOTE: Hidden behind feature gate because error messages are terrible
+        // with this directive included
+        #[cfg_attr(feature = "trace", tracable_parser)]
         $vis fn $name<'a, E> (
-            $input_name: Span<'a, TracableInfo>, $($arg: $ty),*
-        ) -> IResult<Span<'a, TracableInfo>, $ret, E>
-            where E: ParseError<Span<'a, TracableInfo>>,
+            $input_name: Span<'a>, $($arg: $ty),*
+        ) -> IResult<Span<'a>, $ret, E>
+            where E: ParseError<Span<'a>>,
         {
             $body
         }
@@ -114,7 +121,8 @@ macro_rules! chain_parsers {
     };
 }
 
-fn span_to_str<'a, X: Clone+Copy>(span: Span<'a, X>) -> &'a str {
+// Converts a span into a raw string
+fn span_to_str<'a>(span: Span<'a>) -> &'a str {
     span.fragment()
 }
 
@@ -380,6 +388,21 @@ def_parser!(entry(input) -> Entry; {
 });
 
 
+// Parses a whole bibtex file to yield a list of entries
+def_parser!(pub entries(input) -> Vec<Entry>; {
+    if input.fragment().is_empty() {
+        Ok((input, vec!()))
+    }
+    else {
+        let (rest_slice, new_entry) = entry(input)?;
+        let (remaining_slice, mut rest_entries) = entries(rest_slice)?;
+        // NOTE: O(n) insertions, could cause issues in the future
+        rest_entries.insert(0, new_entry);
+        Ok((remaining_slice, rest_entries))
+    }
+});
+
+
 #[cfg(test)]
 mod tests {
     // Each time we are using `separated_list`, we need to add a trailing
@@ -390,11 +413,11 @@ mod tests {
 
     use nom::error::ErrorKind;
 
-    type Error<'a> = (Span<'a, TracableInfo>, ErrorKind);
-    fn mkspan<'a>(s: &'a str) -> Span<'a, TracableInfo> {
-        Span::new_extra(s, TracableInfo::new())
-    }
+    type Error<'a> = (Span<'a>, ErrorKind);
 
+    // Convenience macro to convert a Span<&str> to an &str which is required
+    // because `PartialEq` on spans differenciate between offsets. For asserts
+    // to work as expected, this macro can be used instead
     macro_rules! str_err {
         ($val:expr) => {
             $val.map(|(span, parse)| (span_to_str(span), parse))
@@ -805,7 +828,6 @@ mod tests {
         );
     }
 
-    /*
     #[test]
     fn malformed_entries_produce_errors() {
         let bib_str = "
@@ -848,5 +870,4 @@ mod tests {
             "Malformed entries list parsed correctly"
         );
     }
-    */
 }

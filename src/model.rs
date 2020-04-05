@@ -1,6 +1,6 @@
 use crate::error::BibtexError;
 use crate::parser;
-use crate::parser::Entry;
+use crate::parser::{Entry, mkspan, Span};
 use std::result;
 use std::str;
 use nom::error::VerboseError;
@@ -52,11 +52,13 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        unimplemented!()
-        // match parser::abbreviation_string::<VerboseError<&str>>(bibtex) {
-        //     Ok((_, v)) => unimplemented!(), // Ok(v),
-        //     Err(e) => Err(BibtexError::with_context(bibtex, e)),
-        // }
+        let span = mkspan(bibtex);
+        match parser::entries::<VerboseError<Span<'a>>>(span) {
+            Ok((_, v)) => Ok(v),
+            Err(e) => {
+                Err(BibtexError::with_context(bibtex, e))
+            },
+        }
     }
 
     /// Get preambles with expanded variables.
