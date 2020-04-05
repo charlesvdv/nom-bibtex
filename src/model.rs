@@ -3,6 +3,7 @@ use parser;
 use parser::Entry;
 use std::result;
 use std::str;
+use nom::error::VerboseError;
 
 type Result<T> = result::Result<T, BibtexError>;
 
@@ -51,9 +52,9 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        match parser::entries(bibtex) {
-            Ok((_, v)) => Ok(v),
-            Err(e) => Err(From::from(e)),
+        match parser::abbreviation_string::<VerboseError<&str>>(bibtex) {
+            Ok((_, v)) => unimplemented!(), // Ok(v),
+            Err(e) => Err(BibtexError::with_context(bibtex, e)),
         }
     }
 

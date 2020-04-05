@@ -1,5 +1,5 @@
 use nom::Err;
-use nom::error::ErrorKind;
+use nom::error::{ErrorKind, VerboseError, convert_error};
 use std::error::Error;
 
 quick_error! {
@@ -24,6 +24,18 @@ impl<'a> From<Err<(&str, ErrorKind)>> for BibtexError {
             Err::Incomplete(e) => format!("Incomplete: {:?}", e),
             Err::Error((_, e)) | Err::Failure((_, e)) => {
                 e.description().into()
+            },
+        };
+        BibtexError::Parsing(descr)
+    }
+}
+
+impl BibtexError {
+    pub fn with_context(input: &str, err: Err<VerboseError<&str>>) -> BibtexError {
+        let descr = match err {
+            Err::Incomplete(e) => format!("Incomplete: {:?}", e),
+            Err::Error(e) | Err::Failure(e) => {
+                convert_error(input, e)
             },
         };
         BibtexError::Parsing(descr)
