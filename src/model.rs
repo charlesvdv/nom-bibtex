@@ -1,6 +1,6 @@
-use error::BibtexError;
-use parser;
-use parser::Entry;
+use crate::error::BibtexError;
+use crate::parser;
+use crate::parser::Entry;
 use std::result;
 use std::str;
 use nom::error::VerboseError;
@@ -52,10 +52,11 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        match parser::abbreviation_string::<VerboseError<&str>>(bibtex) {
-            Ok((_, v)) => unimplemented!(), // Ok(v),
-            Err(e) => Err(BibtexError::with_context(bibtex, e)),
-        }
+        unimplemented!()
+        // match parser::abbreviation_string::<VerboseError<&str>>(bibtex) {
+        //     Ok((_, v)) => unimplemented!(), // Ok(v),
+        //     Err(e) => Err(BibtexError::with_context(bibtex, e)),
+        // }
     }
 
     /// Get preambles with expanded variables.

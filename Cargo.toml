@@ -10,6 +10,8 @@ keywords = ["bibtex", "latex", "parser", "nom"]
 repository = "https://github.com/charlesvdv/nom-bibtex"
 documentation = "https://docs.rs/nom-bibtex"
 
+edition="2018"
+
 license = "MIT"
 
 [lib]
@@ -21,3 +23,9 @@ travis-ci = { repository = "charlesvdv/nom-bibtex" }
 [dependencies]
 nom = "5.1.0"
 quick-error = "1.2.*"
+nom-tracable = "0.5.2"
+nom_locate = "2.0.0"
+
+[features]
+default = []
+trace = ["nom-tracable/trace"]

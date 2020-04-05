@@ -4,15 +4,12 @@
 //
 // // Required because the compiler don't seems do recognize
 // // that macros are use inside of each others..
-// TODO: Remove
-#![allow(dead_code)]
 //
-use model::{KeyValue, StringValueType};
+use crate::model::{KeyValue, StringValueType};
 use nom::IResult;
-use nom::error::{ParseError, ErrorKind};
+use nom::error::ParseError;
 use nom::{
     character::complete::{
-        alpha0,
         multispace0,
         digit1,
     },
@@ -37,10 +34,17 @@ use nom::{
         opt,
     },
     branch::alt,
-    AsChar
+    AsChar,
+    Slice,
 };
 use nom::character::complete::char as _char;
 use std::str;
+use nom_locate::LocatedSpan;
+use nom_tracable::{tracable_parser, TracableInfo};
+
+
+pub type Span<'a, X=()> = LocatedSpan<&'a str, X>;
+
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Entry<'a> {
@@ -56,10 +60,11 @@ macro_rules! def_parser {
     ($vis:vis $name:ident(
         $input_name:ident$(,)? $($arg:ident, $type:ty),*
     ) -> $ret:ty; $body:tt) => {
-        $vis fn $name<'a, E>(
-            $input_name: &'a str, $($arg: $ty),*
-        ) -> IResult<&'a str, $ret, E>
-            where E: ParseError<&'a str> + 'a
+        #[tracable_parser]
+        $vis fn $name<'a, E> (
+            $input_name: Span<'a, TracableInfo>, $($arg: $ty),*
+        ) -> IResult<Span<'a, TracableInfo>, $ret, E>
+            where E: ParseError<Span<'a, TracableInfo>>,
         {
             $body
         }
@@ -109,16 +114,22 @@ macro_rules! chain_parsers {
     };
 }
 
+fn span_to_str<'a, X: Clone+Copy>(span: Span<'a, X>) -> &'a str {
+    span.fragment()
+}
 
 // Parses a single identifier
 def_parser!(ident(input) -> &str; {
-    take_while1(|c: char| c.is_alphanum() || c == '_' || c == '-')(input)
+    map(
+        take_while1(|c: char| c.is_alphanum() || c == '_' || c == '-'),
+        span_to_str
+    )(input)
 });
 
 // Parses an abbreviation: An identifier that can be surrounded by whitespace
 def_parser!(abbreviation_only(input) -> StringValueType<'a>; {
     map(
-        delimited(multispace0, ident, multispace0),
+        dws!(ident),
         |v| StringValueType::Abbreviation(v)
     )(input)
 });
@@ -126,7 +137,7 @@ def_parser!(abbreviation_only(input) -> StringValueType<'a>; {
 // Only used for bibliography tags.
 def_parser!(bracketed_string(input) -> &str; {
     // We are not in a bracketed_string.
-    match input.chars().nth(0) {
+    match input.fragment().chars().nth(0) {
         Some('{') => {},
         Some(_) => {
             return Err(nom::Err::Error(E::from_char(input, '{')));
@@ -135,11 +146,12 @@ def_parser!(bracketed_string(input) -> &str; {
             return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
         }
     }
+
     let mut brackets_queue = 0;
 
     let mut last_idx = 0;
-    for (i, c) in input.char_indices().skip(1) {
-        last_idx = i;
+    for (i, c) in input.fragment().char_indices().skip(1) {
+        last_idx = i+1;
         match c as char {
             '{' => brackets_queue += 1,
             '}' => if brackets_queue == 0 {
@@ -157,14 +169,14 @@ def_parser!(bracketed_string(input) -> &str; {
             _ => continue,
         }
     }
-    let value = &input[1..last_idx];
-    // NOTE: This +1 might be slightly unsafe as we are indexing strings. However,
-    // the last char is expected to be '}' which is one byte large
-    Ok((&input[last_idx + 1..], str::trim(value)))
+    Ok((
+        input.slice(last_idx..),
+        span_to_str(input.slice(1..last_idx-1)).trim()
+    ))
 });
 
 def_parser!(quoted_string(input) -> &str; {
-    match input.chars().nth(0) {
+    match input.fragment().chars().nth(0) {
         Some('"') => {},
         Some(_) => {
             return Err(nom::Err::Error(E::from_char(input, '"')));
@@ -173,11 +185,10 @@ def_parser!(quoted_string(input) -> &str; {
             return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
         }
     }
-
     let mut brackets_queue = 0;
     let mut last_idx = 0;
-    for (i, c) in input.char_indices().skip(1) {
-        last_idx = i;
+    for (i, c) in input.fragment().char_indices().skip(1) {
+        last_idx = i+1;
         match c as char {
             '{' => brackets_queue += 1,
             '}' => {
@@ -192,14 +203,16 @@ def_parser!(quoted_string(input) -> &str; {
             _ => continue,
         }
     }
-    Ok((&input[last_idx + 1..], &input[1..last_idx]))
+    Ok((
+        input.slice(last_idx..),
+        span_to_str(input.slice(1..last_idx-1))
+    ))
 });
 
 def_parser!(pub abbreviation_string(input) -> Vec<StringValueType<'a>>; {
     separated_nonempty_list(
-        preceded(multispace0, nom::character::complete::char('#')),
-        preceded(
-           multispace0,
+        pws!(_char('#')),
+        pws!(
             alt((
                 abbreviation_only,
                 map(quoted_string, |v: &str| StringValueType::Str(v))
@@ -272,7 +285,7 @@ def_parser!(preamble(input) -> Entry; {
         pws!(_char('{')),
         alt((
             abbreviation_string,
-            map(take_until("}"), |v: &str| vec![StringValueType::Str(v)]),
+            map(take_until("}"), |v| vec![StringValueType::Str(span_to_str(v))]),
         )) => preamble,
         pws!(_char('}'))
     );
@@ -288,7 +301,7 @@ def_parser!(bib_tags(input) -> Vec<KeyValue<'_>>; {
                 ident,
                 dws!(_char('=')),
                 alt((
-                    map(digit1, |v| vec!(StringValueType::Str(v))),
+                    map(digit1, |v| vec!(StringValueType::Str(span_to_str(v)))),
                     abbreviation_string,
                     map(quoted_string, |v| vec![StringValueType::Str(v)]),
                     map(bracketed_string, |v| vec![StringValueType::Str(v)]),
@@ -310,10 +323,10 @@ def_parser!(bibliography_entry(input) -> Entry; {
     chain_parsers! (input, rem;
         entry_type => entry_t ,
         dws!(_char('{')),
-        take_until(",") => citation_key,
+        map(take_until(","), span_to_str) => citation_key,
         dws!(_char(',')),
         bib_tags => tags ,
-        pws!(_char(',')),
+        opt(pws!(_char(','))),
         pws!(_char('}'))
     );
     Ok((rem, Entry::Bibliography(entry_t, citation_key, tags)))
@@ -350,7 +363,7 @@ def_parser!(entry_with_type(input) -> Entry; {
 
 // Handle data beginning without an @ which are considered comments.
 def_parser!(no_type_comment(input) -> &str; {
-    map(is_not("@"), str::trim)(input)
+    map(is_not("@"), span_to_str)(input)
 });
 
 
@@ -375,18 +388,29 @@ mod tests {
 
     use super::*;
 
-    type Error<'a> = (&'a str, ErrorKind);
+    use nom::error::ErrorKind;
+
+    type Error<'a> = (Span<'a, TracableInfo>, ErrorKind);
+    fn mkspan<'a>(s: &'a str) -> Span<'a, TracableInfo> {
+        Span::new_extra(s, TracableInfo::new())
+    }
+
+    macro_rules! str_err {
+        ($val:expr) => {
+            $val.map(|(span, parse)| (span_to_str(span), parse))
+        }
+    }
 
     #[test]
     fn test_entry() {
         assert_eq!(
-            entry::<Error>(" comment"),
+            str_err!(entry::<Error>(mkspan(" comment"))),
             Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry::<Error>(" @ StrIng { key = \"value\" }"),
+            str_err!(entry::<Error>(mkspan(" @ StrIng { key = \"value\" }"))),
             Ok(("", Entry::Variable(kv)))
         );
 
@@ -401,7 +425,7 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type::<Error>(bib_str),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
                 "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
@@ -412,13 +436,13 @@ mod tests {
     #[test]
     fn test_entry_with_journal() {
         assert_eq!(
-            entry::<Error>(" comment"),
+            str_err!(entry::<Error>(mkspan(" comment"))),
             Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry::<Error>(" @ StrIng { key = \"value\" }"),
+            str_err!(entry::<Error>(mkspan(" @ StrIng { key = \"value\" }"))),
             Ok(("", Entry::Variable(kv)))
         );
 
@@ -435,7 +459,7 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type::<Error>(bib_str),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
                 "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
@@ -446,11 +470,11 @@ mod tests {
     #[test]
     fn test_no_type_comment() {
         assert_eq!(
-            no_type_comment::<Error>("test@"),
+            str_err!(no_type_comment::<Error>(mkspan("test@"))),
             Ok(("@", "test"))
         );
         assert_eq!(
-            no_type_comment::<Error>("test"),
+            str_err!(no_type_comment::<Error>(mkspan("test"))),
             Ok(("", "test"))
         );
     }
@@ -458,18 +482,18 @@ mod tests {
     #[test]
     fn test_entry_with_type() {
         assert_eq!(
-            entry_with_type::<Error>("@Comment{test}"),
+            str_err!(entry_with_type::<Error>(mkspan("@Comment{test}"))),
             Ok(("", Entry::Comment("test")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry_with_type::<Error>("@String{key=\"value\"}"),
+            str_err!(entry_with_type::<Error>(mkspan("@String{key=\"value\"}"))),
             Ok(("", Entry::Variable(kv)))
         );
 
         assert_eq!(
-            entry_with_type::<Error>("@preamble{name # \"'s preamble\"}"),
+            str_err!(entry_with_type::<Error>(mkspan("@preamble{name # \"'s preamble\"}"))),
             Ok((
                 "",
                 Entry::Preamble(vec![
@@ -490,7 +514,7 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type::<Error>(bib_str),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
                 "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
@@ -502,15 +526,17 @@ mod tests {
     fn test_entry_with_type_and_spaces() {
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry_with_type::<Error>("@ String{key=\"value\"}"),
+            str_err!(entry_with_type::<Error>(mkspan("@ String{key=\"value\"}"))),
             Ok(("", Entry::Variable(kv)))
         );
     }
 
     #[test]
     fn test_type_comment() {
+        let parse = type_comment::<Error>(mkspan("@Comment{test}"));
+
         assert_eq!(
-            type_comment::<Error>("@Comment{test}"),
+            str_err!(parse),
             Ok(("", Entry::Comment("test")))
         );
     }
@@ -518,7 +544,7 @@ mod tests {
     #[test]
     fn test_preamble() {
         assert_eq!(
-            preamble::<Error>("@preamble{my preamble}"),
+            str_err!(preamble::<Error>(mkspan("@preamble{\"my preamble\"}"))),
             Ok((
                 "",
                 Entry::Preamble(vec![StringValueType::Str("my preamble")])
@@ -539,17 +565,17 @@ mod tests {
         );
 
         assert_eq!(
-            variable::<Error>("@string{key=\"value\"}"),
+            str_err!(variable::<Error>(mkspan("@string{key=\"value\"}"))),
             Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            variable::<Error>("@string( key=\"value\" )"),
+            str_err!(variable::<Error>(mkspan("@string( key=\"value\" )"))),
             Ok(("", Entry::Variable(kv2)))
         );
 
         assert_eq!(
-            variable::<Error>("@string( key=varone # vartwo)"),
+            str_err!(variable::<Error>(mkspan("@string( key=varone # vartwo)"))),
             Ok(("", Entry::Variable(kv3)))
         );
     }
@@ -565,7 +591,7 @@ mod tests {
         );
 
         assert_eq!(
-            variable_key_value_pair::<Error>("key = varone # vartwo,"),
+            str_err!(variable_key_value_pair::<Error>(mkspan("key = varone # vartwo,"))),
             Ok((",", kv))
         );
     }
@@ -583,7 +609,7 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            bibliography_entry::<Error>(bib_str),
+            str_err!(bibliography_entry::<Error>(mkspan(bib_str))),
             Ok((
                 "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
@@ -599,7 +625,7 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            bibliography_entry::<Error>(bib_str),
+            str_err!(bibliography_entry::<Error>(mkspan(bib_str))),
             Ok((
                 "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
@@ -627,7 +653,7 @@ mod tests {
             KeyValue::new("title", vec![StringValueType::Str("My new book")]),
         ];
         assert_eq!(
-            bib_tags::<Error>(tags_str),
+            str_err!(bib_tags::<Error>(mkspan(tags_str))),
             Ok(("}", result))
         );
     }
@@ -635,7 +661,7 @@ mod tests {
     #[test]
     fn test_abbreviation_string() {
         assert_eq!(
-            abbreviation_string::<Error>("var # \"string\","),
+            str_err!(abbreviation_string::<Error>(mkspan("var # \"string\","))),
             Ok((
                 ",",
                 vec![
@@ -645,7 +671,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string::<Error>("\"string\" # var,"),
+            str_err!(abbreviation_string::<Error>(mkspan("\"string\" # var,"))),
             Ok((
                 ",",
                 vec![
@@ -655,7 +681,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string::<Error>("string # var,"),
+            str_err!(abbreviation_string::<Error>(mkspan("string # var,"))),
             Ok((
                 ",",
                 vec![
@@ -667,17 +693,17 @@ mod tests {
     }
 
     #[test]
-    fn test_abbreviation_string_does_not_match_bare_words() {
+    fn test_abbreviation_string_does_not_match_multiple_bare_words() {
         assert_eq!(
-            abbreviation_string::<()>("var string"),
-            Err(nom::Err::Error(()))
+            str_err!(abbreviation_string::<()>(mkspan("var string"))),
+            Ok(("string", vec![StringValueType::Abbreviation("var")]))
         );
     }
 
     #[test]
     fn test_abbreviation_only() {
         assert_eq!(
-            abbreviation_only::<Error>(" var "),
+            str_err!(abbreviation_only::<Error>(mkspan(" var "))),
             Ok((
                 "",
                 StringValueType::Abbreviation("var")
@@ -688,7 +714,7 @@ mod tests {
     #[test]
     fn test_abbreviation_with_underscore() {
         assert_eq!(
-            abbreviation_only::<Error>(" IEEE_J_CAD "),
+            str_err!(abbreviation_only::<Error>(mkspan(" IEEE_J_CAD "))),
             Ok((
                 "",
                 StringValueType::Abbreviation("IEEE_J_CAD")
@@ -699,19 +725,23 @@ mod tests {
     #[test]
     fn test_bracketed_string() {
         assert_eq!(
-            bracketed_string::<Error>("{ test }"),
+            str_err!(bracketed_string::<Error>(mkspan("{ test }"))),
             Ok(("", "test"))
         );
         assert_eq!(
-            bracketed_string::<Error>("{ {test} }"),
+            str_err!(bracketed_string::<Error>(mkspan("{ test word}"))),
+            Ok(("", "test word"))
+        );
+        assert_eq!(
+            str_err!(bracketed_string::<Error>(mkspan("{ {test} }"))),
             Ok(("", "{test}"))
         );
-        assert!(bracketed_string::<Error>("{ @{test} }").is_err());
+        assert!(bracketed_string::<Error>(mkspan("{ @{test} }")).is_err());
     }
     #[test]
     fn test_bracketed_string_takes_the_correct_amount_of_brackets() {
         assert_eq!(
-            bracketed_string::<Error>("{ test }} } }"),
+            str_err!(bracketed_string::<Error>(mkspan("{ test }} } }"))),
             Ok(("} } }", "test"))
         );
     }
@@ -719,23 +749,23 @@ mod tests {
     #[test]
     fn test_quoted_string() {
         assert_eq!(
-            quoted_string::<Error>("\"test\""),
+            str_err!(quoted_string::<Error>(mkspan("\"test\""))),
             Ok(("", "test"))
         );
         assert_eq!(
-            quoted_string::<Error>("\"test \""),
+            str_err!(quoted_string::<Error>(mkspan("\"test \""))),
             Ok(("", "test "))
         );
         assert_eq!(
-            quoted_string::<Error>("\"{\"test\"}\""),
+            str_err!(quoted_string::<Error>(mkspan("\"{\"test\"}\""))),
             Ok(("", "{\"test\"}"))
         );
         assert_eq!(
-            quoted_string::<Error>("\"A {bunch {of} braces {in}} title\""),
+            str_err!(quoted_string::<Error>(mkspan("\"A {bunch {of} braces {in}} title\""))),
             Ok(("", "A {bunch {of} braces {in}} title"))
         );
         assert_eq!(
-            quoted_string::<Error>("\"Simon {\"}the {saint\"} Templar\""),
+            str_err!(quoted_string::<Error>(mkspan("\"Simon {\"}the {saint\"} Templar\""))),
             Ok(("", "Simon {\"}the {saint\"} Templar"))
         );
     }
@@ -745,9 +775,9 @@ mod tests {
         let kv1 = KeyValue::new("IEEE_J_ANNE", vec![StringValueType::Str("{IEEE} Trans. Aeronaut. Navig. Electron.")]);
 
         assert_eq!(
-            variable::<Error>(
-                "@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
-            ),
+            str_err!(variable::<Error>(
+                mkspan("@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}")
+            )),
             Ok(("", Entry::Variable(kv1)))
         );
     }
@@ -759,16 +789,15 @@ mod tests {
             vec![StringValueType::Str("{IEEE} Trans. Bio-Med. Eng.")]
         );
 
-        // TODO: Re-enable this test
         assert_eq!(
-            variable::<Error>(
-                "@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}"
-            ),
+            str_err!(variable::<Error>(
+                mkspan("@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}")
+            )),
             Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            abbreviation_only::<Error>(" IEE_j_B-ME "),
+            str_err!(abbreviation_only::<Error>(mkspan(" IEE_j_B-ME "))),
             Ok((
                 "",
                 StringValueType::Abbreviation("IEE_j_B-ME")
