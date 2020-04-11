@@ -1,9 +1,9 @@
-use error::BibtexError;
-use nom::types::CompleteByteSlice;
-use parser;
-use parser::Entry;
+use crate::error::BibtexError;
+use crate::parser;
+use crate::parser::{Entry, mkspan, Span};
 use std::result;
 use std::str;
+use nom::error::VerboseError;
 
 type Result<T> = result::Result<T, BibtexError>;
 
@@ -52,9 +52,12 @@ impl<'a> Bibtex<'a> {
 
     /// Get a raw vector of entries in order from the files.
     pub fn raw_parse(bibtex: &'a str) -> Result<Vec<Entry<'a>>> {
-        match parser::entries(CompleteByteSlice(bibtex.as_bytes())) {
+        let span = mkspan(bibtex);
+        match parser::entries::<VerboseError<Span<'a>>>(span) {
             Ok((_, v)) => Ok(v),
-            Err(e) => Err(From::from(e)),
+            Err(e) => {
+                Err(BibtexError::with_context(bibtex, e))
+            },
         }
     }
 

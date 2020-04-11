@@ -4,12 +4,52 @@
 //
 // // Required because the compiler don't seems do recognize
 // // that macros are use inside of each others..
-// #![allow(dead_code)]
 //
-use model::{KeyValue, StringValueType};
-use nom::types::CompleteByteSlice;
-use nom::{alpha, is_digit, Err, ErrorKind, IResult, is_alphabetic};
+use crate::model::{KeyValue, StringValueType};
+use nom::IResult;
+use nom::error::ParseError;
+use nom::{
+    character::complete::{
+        multispace0,
+        digit1,
+    },
+    bytes::complete::{
+        take_while1,
+        is_not,
+        take_until,
+    },
+    sequence::{
+        preceded,
+        delimited,
+        separated_pair,
+        tuple,
+    },
+    multi::{
+        separated_nonempty_list,
+        separated_list,
+    },
+    combinator::{
+        map,
+        peek,
+        opt,
+    },
+    branch::alt,
+    AsChar,
+    Slice,
+};
+use nom::character::complete::char as _char;
 use std::str;
+use nom_locate::LocatedSpan;
+#[cfg(feature = "trace")]
+use nom_tracable::tracable_parser;
+use nom_tracable::TracableInfo;
+
+
+pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
+pub fn mkspan<'a>(s: &'a str) -> Span<'a> {
+    Span::new_extra(s, TracableInfo::new())
+}
+
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Entry<'a> {
@@ -19,8 +59,338 @@ pub enum Entry<'a> {
     Bibliography(&'a str, &'a str, Vec<KeyValue<'a>>),
 }
 
-pub fn entries<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, Vec<Entry>> {
-    if input.is_empty() {
+
+// Defines a parser with a common type signature
+macro_rules! def_parser {
+    ($vis:vis $name:ident(
+        $input_name:ident$(,)? $($arg:ident, $type:ty),*
+    ) -> $ret:ty; $body:tt) => {
+        // NOTE: Hidden behind feature gate because error messages are terrible
+        // with this directive included
+        #[cfg_attr(feature = "trace", tracable_parser)]
+        $vis fn $name<'a, E> (
+            $input_name: Span<'a>, $($arg: $ty),*
+        ) -> IResult<Span<'a>, $ret, E>
+            where E: ParseError<Span<'a>>,
+        {
+            $body
+        }
+    }
+}
+
+// Makes a parser whitespace insensitive before the content
+macro_rules! pws {
+    ($inner:expr) => {
+        preceded(multispace0, $inner)
+    }
+}
+// Makes a parser whitespace insensitive before and after the content
+macro_rules! dws {
+    ($inner:expr) => {
+        delimited(multispace0, $inner, multispace0)
+    }
+}
+
+// Helper macro for the chain_parsers macro.
+macro_rules! optional_ident {
+    () => {_};
+    ($name:ident) => {$name}
+}
+/**
+    Applies a series of parsers, and stores results from some of them
+
+    The first two arguments are the name of the input string, followed
+    by the name to store the rest of the input in after all parsers have
+    been applied
+
+    Example:
+    chain_parsers!{input, rest;
+        parser1 => name1,
+        parser2,
+        parser3 => name3
+    }
+    Ok((rest, (name1, name3)))
+*/
+macro_rules! chain_parsers {
+    ($input:ident, $rest:ident; $( $parser:expr $(=> $name:ident)? ),+) => {
+        let parser = tuple(( $( $parser ),* ));
+        let (
+            $rest,
+            ( $( optional_ident!($($name)?) ),* )
+        ) = parser($input)?;
+    };
+}
+
+// Converts a span into a raw string
+fn span_to_str<'a>(span: Span<'a>) -> &'a str {
+    span.fragment()
+}
+
+// Parses a single identifier
+def_parser!(ident(input) -> &str; {
+    map(
+        take_while1(|c: char| c.is_alphanum() || c == '_' || c == '-'),
+        span_to_str
+    )(input)
+});
+
+// Parses an abbreviation: An identifier that can be surrounded by whitespace
+def_parser!(abbreviation_only(input) -> StringValueType<'a>; {
+    map(
+        dws!(ident),
+        |v| StringValueType::Abbreviation(v)
+    )(input)
+});
+
+// Only used for bibliography tags.
+def_parser!(bracketed_string(input) -> &str; {
+    // We are not in a bracketed_string.
+    match input.fragment().chars().nth(0) {
+        Some('{') => {},
+        Some(_) => {
+            return Err(nom::Err::Error(E::from_char(input, '{')));
+        }
+        None => {
+            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+        }
+    }
+
+    let mut brackets_queue = 0;
+
+    let mut last_idx = 0;
+    for (i, c) in input.fragment().char_indices().skip(1) {
+        last_idx = i+1;
+        match c as char {
+            '{' => brackets_queue += 1,
+            '}' => if brackets_queue == 0 {
+                break;
+            } else {
+                brackets_queue -= 1;
+            },
+            // TODO: Verify that this should be here
+            '"' => if brackets_queue == 0 {
+                return Err(nom::Err::Error(E::from_char(input, '}')));
+            },
+            '@' => {
+                return Err(nom::Err::Error(E::from_char(input, '}')));
+            }
+            _ => continue,
+        }
+    }
+    Ok((
+        input.slice(last_idx..),
+        span_to_str(input.slice(1..last_idx-1)).trim()
+    ))
+});
+
+def_parser!(quoted_string(input) -> &str; {
+    match input.fragment().chars().nth(0) {
+        Some('"') => {},
+        Some(_) => {
+            return Err(nom::Err::Error(E::from_char(input, '"')));
+        }
+        None => {
+            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+        }
+    }
+    let mut brackets_queue = 0;
+    let mut last_idx = 0;
+    for (i, c) in input.fragment().char_indices().skip(1) {
+        last_idx = i+1;
+        match c as char {
+            '{' => brackets_queue += 1,
+            '}' => {
+                brackets_queue -= 1;
+                if brackets_queue < 0 {
+                    return Err(nom::Err::Error(E::from_char(input, '"')));
+                }
+            }
+            '"' => if brackets_queue == 0 {
+                break;
+            },
+            _ => continue,
+        }
+    }
+    Ok((
+        input.slice(last_idx..),
+        span_to_str(input.slice(1..last_idx-1))
+    ))
+});
+
+def_parser!(pub abbreviation_string(input) -> Vec<StringValueType<'a>>; {
+    separated_nonempty_list(
+        pws!(_char('#')),
+        pws!(
+            alt((
+                abbreviation_only,
+                map(quoted_string, |v: &str| StringValueType::Str(v))
+            ))
+        )
+    )(input)
+});
+
+// Parse a bibtex entry type which looks like:
+// @type{ ...
+//
+// But don't consume the last bracket.
+def_parser!(entry_type(input) -> &str; {
+    delimited(
+        pws!(_char('@')),
+        pws!(ident),
+        pws!(peek(alt((_char('{'), _char('(')))))
+    )(input)
+});
+
+// Parse key value pair which has the form:
+// key="value"
+def_parser!(variable_key_value_pair(input) -> KeyValue; {
+    map(
+        separated_pair(
+            pws!(ident),
+            dws!(_char('=')),
+            alt((
+                map(quoted_string, |v: &str| vec!(StringValueType::Str(v))),
+                abbreviation_string,
+                map(abbreviation_only, |v| vec!(v)),
+            ))
+        ),
+        |v: (&str, Vec<StringValueType<'_>>)| KeyValue::new(v.0, v.1)
+    )(input)
+});
+
+// String variable can be delimited by brackets or parenthesis.
+def_parser!(handle_variable(input) -> KeyValue; {
+    alt((
+        delimited(
+            pws!(_char('{')),
+            dws!(variable_key_value_pair),
+            peek(_char('}'))
+        ),
+        delimited(
+            pws!(_char('(')),
+            dws!(variable_key_value_pair),
+            peek(_char(')'))
+        )
+    ))(input)
+});
+
+// Handle a string variable from the bibtex format:
+// @String (key = "value") or @String {key = "value"}
+def_parser!(variable(input) -> Entry; {
+    chain_parsers!(input, rest;
+        entry_type,
+        handle_variable => key_val,
+        alt((_char('}'), _char(')')))
+    );
+    Ok((rest, Entry::Variable(key_val)))
+});
+
+// Handle a preamble of the format:
+// @Preamble { my preamble }
+def_parser!(preamble(input) -> Entry; {
+    chain_parsers!(input, rest;
+        entry_type,
+        pws!(_char('{')),
+        alt((
+            abbreviation_string,
+            map(take_until("}"), |v| vec![StringValueType::Str(span_to_str(v))]),
+        )) => preamble,
+        pws!(_char('}'))
+    );
+    Ok((rest, Entry::Preamble(preamble)))
+});
+
+// Parse all the tags used by one bibliography entry separated by a comma.
+def_parser!(bib_tags(input) -> Vec<KeyValue<'_>>; {
+    separated_list(
+        dws!(_char(',')),
+        map(
+            separated_pair(
+                ident,
+                dws!(_char('=')),
+                alt((
+                    map(digit1, |v| vec!(StringValueType::Str(span_to_str(v)))),
+                    abbreviation_string,
+                    map(quoted_string, |v| vec![StringValueType::Str(v)]),
+                    map(bracketed_string, |v| vec![StringValueType::Str(v)]),
+                    map(abbreviation_only, |v| vec![v]),
+                ))
+            ),
+            |v: (&str, Vec<StringValueType<'_>>)| KeyValue::new(v.0, v.1)
+        )
+    )(input)
+});
+
+
+// Handle a bibliography entry of the format:
+// @entry_type { citation_key,
+//     tag1,
+//     tag2
+// }
+def_parser!(bibliography_entry(input) -> Entry; {
+    chain_parsers! (input, rem;
+        entry_type => entry_t ,
+        dws!(_char('{')),
+        map(take_until(","), span_to_str) => citation_key,
+        dws!(_char(',')),
+        bib_tags => tags ,
+        opt(pws!(_char(','))),
+        pws!(_char('}'))
+    );
+    Ok((rem, Entry::Bibliography(entry_t, citation_key, tags)))
+});
+
+
+// Handle a comment of the format:
+// @Comment { my comment }
+def_parser!(type_comment(input) -> Entry; {
+    chain_parsers!(input, rem;
+        entry_type,
+        bracketed_string => comment
+    );
+    Ok((rem, Entry::Comment(comment)))
+});
+
+// Same as entry_type but with peek so it doesn't consume the
+// entry type.
+def_parser!(peeked_entry_type(input) -> &str; {
+    peek(entry_type)(input)
+});
+
+// Parse any entry which starts with a @.
+def_parser!(entry_with_type(input) -> Entry; {
+    let entry_type = peeked_entry_type::<E>(input)?;
+
+    match entry_type.1.to_lowercase().as_ref() {
+        "comment" => type_comment(input),
+        "string" => variable(input),
+        "preamble" => preamble(input),
+        _ => bibliography_entry(input),
+    }
+});
+
+// Handle data beginning without an @ which are considered comments.
+def_parser!(no_type_comment(input) -> &str; {
+    map(is_not("@"), span_to_str)(input)
+});
+
+
+// Parse any entry in a bibtex file.
+// A good entry starts with a @ otherwise, it's
+// considered as a comment.
+def_parser!(entry(input) -> Entry; {
+    pws!(
+        alt((
+            entry_with_type,
+            map(no_type_comment, |v| Entry::Comment(v))
+        ))
+    )(input)
+});
+
+
+// Parses a whole bibtex file to yield a list of entries
+def_parser!(pub entries(input) -> Vec<Entry>; {
+    if input.fragment().is_empty() {
         Ok((input, vec!()))
     }
     else {
@@ -30,295 +400,7 @@ pub fn entries<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a
         rest_entries.insert(0, new_entry);
         Ok((remaining_slice, rest_entries))
     }
-}
-
-// Parse any entry in a bibtex file.
-// A good entry normally starts with a @ otherwise, it's
-// considered as a comment.
-named!(pub entry<CompleteByteSlice, Entry>,
-    ws!(
-        alt!(
-            do_parse!(
-                peek!(char!('@')) >>
-                entry: entry_with_type >>
-                (entry)
-            ) | do_parse!(
-                comment: no_type_comment >>
-                (Entry::Comment(comment))
-            )
-        )
-    )
-);
-
-// Handle data beginning without an @ which are considered comments.
-named!(no_type_comment<CompleteByteSlice, &str>,
-    map!(
-        map_res!(
-            is_not!("@"),
-            complete_byte_slice_to_str
-        ),
-        str::trim
-    )
-);
-
-fn complete_byte_slice_to_str<'a>(s: CompleteByteSlice<'a>) -> Result<&'a str, str::Utf8Error> {
-    str::from_utf8(s.0)
-}
-
-// Parse any entry which starts with a @.
-fn entry_with_type<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, Entry> {
-    let entry_type = peeked_entry_type(input).unwrap();
-
-    match entry_type.1.to_lowercase().as_ref() {
-        "comment" => type_comment(input),
-        "string" => variable(input),
-        "preamble" => preamble(input),
-        _ => bibliography_entry(input),
-    }
-}
-
-// Handle a comment of the format:
-// @Comment { my comment }
-named!(type_comment<CompleteByteSlice, Entry>, do_parse!(
-    entry_type >>
-    comment: call!(bracketed_string) >>
-    (Entry::Comment(comment))
-));
-
-// Handle a preamble of the format:
-// @Preamble { my preamble }
-named!(preamble<CompleteByteSlice, Entry>, do_parse!(
-    entry_type >>
-    ws!(char!('{')) >>
-    preamble: alt!(
-        // Required because otherwise the `mixed_abbreviation_string` will match for
-        // a single value like there were only one variable.
-        do_parse!(
-            val: call!(abbreviation_string) >>
-            peek!(ws!(char!('}'))) >>
-            (val)
-        ) |
-        map!(
-            map!(map_res!(take_until!("}"), complete_byte_slice_to_str), str::trim),
-            |v| vec![StringValueType::Str(v)]
-        )
-    ) >>
-    ws!(char!('}')) >>
-    (Entry::Preamble(preamble))
-));
-
-// Handle a string variable from the bibtex format:
-// @String (key = "value") or @String {key = "value"}
-named!(variable<CompleteByteSlice, Entry>, do_parse!(
-    entry_type >>
-    key_val: call!(handle_variable) >>
-    alt!(char!('}') | char!(')')) >>
-    (Entry::Variable(key_val))
-));
-
-// String variable can be delimited by brackets or parenthesis.
-named!(handle_variable<CompleteByteSlice, KeyValue>,
-    ws!(
-        alt!(
-           delimited!(
-               char!('{'),
-               call!(variable_key_value_pair),
-               peek!(char!('}'))
-           ) | delimited!(
-               char!('('),
-               call!(variable_key_value_pair),
-               peek!(char!(')'))
-           )
-        )
-    )
-);
-
-// Parse key value pair which has the form:
-// key="value"
-named!(variable_key_value_pair<CompleteByteSlice, KeyValue>,
-    map!(
-        separated_pair!(
-            map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
-                complete_byte_slice_to_str
-            ),
-            ws!(char!('=')),
-            alt_complete!(
-                map!(call!(quoted_string), |v| vec![StringValueType::Str(v)]) |
-                call!(abbreviation_string) |
-                call!(abbreviation_only)
-            )
-        ),
-        |v: (&str, Vec<StringValueType<'_>>)| KeyValue::new(v.0, v.1)
-    )
-);
-
-// Handle a bibliography entry of the format:
-// @entry_type { citation_key,
-//     tag1,
-//     tag2
-// }
-named!(pub bibliography_entry<CompleteByteSlice, Entry>, do_parse!(
-    entry_t: entry_type >>
-    ws!(char!('{')) >>
-    citation_key: ws!(map_res!(take_until_and_consume!(","), complete_byte_slice_to_str)) >>
-    tags: bib_tags >>
-    opt!(ws!(tag!(","))) >>
-    ws!(char!('}')) >>
-    (Entry::Bibliography(entry_t, citation_key, tags))
-));
-
-// Parse all the tags used by one bibliography entry separated by a comma.
-named!(bib_tags<CompleteByteSlice, Vec<KeyValue<'_>>>,
-    separated_list!(
-        ws!(char!(',')),
-        map!(
-            separated_pair!(
-                // The key.
-                map_res!(call!(alpha), complete_byte_slice_to_str),
-                ws!(char!('=')),
-                alt_complete!(
-                    call!(abbreviation_string) |
-                    map!(call!(quoted_string), |v| vec![StringValueType::Str(v)]) |
-                    map!(call!(bracketed_string), |v| vec![StringValueType::Str(v)]) |
-                    map!(
-                        map_res!(take_while1!(is_digit), complete_byte_slice_to_str),
-                        |v| vec![StringValueType::Str(v)]
-                    ) |
-                    call!(abbreviation_only)
-                )
-            ),
-            |v: (&str, Vec<StringValueType<'_>>)| KeyValue::new(v.0, v.1)
-        )
-    )
-);
-
-// Parse a bibtex entry type which looks like:
-// @type{ ...
-//
-// But don't consume the last bracket.
-named!(entry_type<CompleteByteSlice, &str>,
-    delimited!(
-        char!('@'),
-        map_res!(ws!(alpha), complete_byte_slice_to_str),
-        peek!(
-            alt!(
-                char!('{') |
-                // Handling for variable string.
-                char!('(')
-            )
-        )
-
-    )
-);
-
-// Same as entry_type but with peek so it doesn't consume the
-// entry type.
-named!(peeked_entry_type<CompleteByteSlice, &str>,
-    peek!(
-        entry_type
-    )
-);
-
-named!(abbreviation_string<CompleteByteSlice, Vec<StringValueType>>,
-    complete!(separated_nonempty_list!(
-        ws!(char!('#')),
-        alt!(
-            map!(map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
-                complete_byte_slice_to_str
-            ), |v| StringValueType::Abbreviation(v)) |
-            map!(call!(quoted_string), |v| StringValueType::Str(v))
-        )
-    ))
-);
-
-named!(abbreviation_only<CompleteByteSlice, Vec<StringValueType>>,
-    ws!(
-        map!(
-            map_res!(
-                take_while1!(|c: u8| is_alphabetic(c) || c == b'_' || c == b'-'),
-                complete_byte_slice_to_str
-            ),
-            |v| vec![StringValueType::Abbreviation(v)]
-        )
-    )
-);
-
-// Only used for bibliography tags.
-fn bracketed_string<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, &str> {
-    let input = &input;
-    // We are not in a bracketed_string.
-    if input[0] as char != '{' {
-        return Err(Err::Error(error_position!(
-            CompleteByteSlice(input),
-            ErrorKind::Custom(0)
-        )));
-    }
-    let mut brackets_queue = 0;
-
-    let mut i = 0;
-    loop {
-        i += 1;
-        match input[i] as char {
-            '{' => brackets_queue += 1,
-            '}' => if brackets_queue == 0 {
-                break;
-            } else {
-                brackets_queue -= 1;
-            },
-            '"' => if brackets_queue == 0 {
-                return Err(Err::Error(error_position!(
-                    CompleteByteSlice(input),
-                    ErrorKind::Custom(0)
-                )));
-            },
-            '@' => {
-                return Err(Err::Error(error_position!(
-                    CompleteByteSlice(input),
-                    ErrorKind::Custom(0)
-                )))
-            }
-            _ => continue,
-        }
-    }
-    let value = str::from_utf8(&input[1..i]).expect("Unable to parse char sequence");
-    Ok((CompleteByteSlice(&input[i + 1..]), str::trim(value)))
-}
-
-fn quoted_string<'a>(input: CompleteByteSlice<'a>) -> IResult<CompleteByteSlice<'a>, &str> {
-    let input = input.as_ref();
-    if input[0] as char != '"' {
-        return Err(Err::Error(error_position!(
-            CompleteByteSlice(input),
-            ErrorKind::Custom(0)
-        )));
-    }
-
-    let mut brackets_queue = 0;
-    let mut i = 0;
-    loop {
-        i += 1;
-        match input[i] as char {
-            '{' => brackets_queue += 1,
-            '}' => {
-                brackets_queue -= 1;
-                if brackets_queue < 0 {
-                    return Err(Err::Error(error_position!(
-                        CompleteByteSlice(input),
-                        ErrorKind::Custom(0)
-                    )));
-                }
-            }
-            '"' => if brackets_queue == 0 {
-                break;
-            },
-            _ => continue,
-        }
-    }
-    let value = str::from_utf8(&input[1..i]).expect("Unable to parse char sequence");
-    Ok((CompleteByteSlice(&input[i + 1..]), value))
-}
+});
 
 
 #[cfg(test)]
@@ -329,20 +411,33 @@ mod tests {
 
     use super::*;
 
+    use nom::error::ErrorKind;
+
+    type Error<'a> = (Span<'a>, ErrorKind);
+
+    // Convenience macro to convert a Span<&str> to an &str which is required
+    // because `PartialEq` on spans differenciate between offsets. For asserts
+    // to work as expected, this macro can be used instead
+    macro_rules! str_err {
+        ($val:expr) => {
+            $val.map(|(span, parse)| (span_to_str(span), parse))
+        }
+    }
+
     #[test]
     fn test_entry() {
         assert_eq!(
-            entry(CompleteByteSlice(b" comment")),
-            Ok((CompleteByteSlice(b""), Entry::Comment("comment")))
+            str_err!(entry::<Error>(mkspan(" comment"))),
+            Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry(CompleteByteSlice(b" @ StrIng { key = \"value\" }")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv)))
+            str_err!(entry::<Error>(mkspan(" @ StrIng { key = \"value\" }"))),
+            Ok(("", Entry::Variable(kv)))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\" }";
@@ -353,9 +448,9 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type(CompleteByteSlice(bib_str)),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -364,17 +459,17 @@ mod tests {
     #[test]
     fn test_entry_with_journal() {
         assert_eq!(
-            entry(CompleteByteSlice(b" comment")),
-            Ok((CompleteByteSlice(b""), Entry::Comment("comment")))
+            str_err!(entry::<Error>(mkspan(" comment"))),
+            Ok(("", Entry::Comment("comment")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry(CompleteByteSlice(b" @ StrIng { key = \"value\" }")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv)))
+            str_err!(entry::<Error>(mkspan(" @ StrIng { key = \"value\" }"))),
+            Ok(("", Entry::Variable(kv)))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            journal = SOME_ABBREV,
@@ -387,9 +482,9 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type(CompleteByteSlice(bib_str)),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -398,32 +493,32 @@ mod tests {
     #[test]
     fn test_no_type_comment() {
         assert_eq!(
-            no_type_comment(CompleteByteSlice(b"test@")),
-            Ok((CompleteByteSlice(b"@"), "test"))
+            str_err!(no_type_comment::<Error>(mkspan("test@"))),
+            Ok(("@", "test"))
         );
         assert_eq!(
-            no_type_comment(CompleteByteSlice(b"test")),
-            Ok((CompleteByteSlice(b""), "test"))
+            str_err!(no_type_comment::<Error>(mkspan("test"))),
+            Ok(("", "test"))
         );
     }
 
     #[test]
     fn test_entry_with_type() {
         assert_eq!(
-            entry_with_type(CompleteByteSlice(b"@Comment{test}")),
-            Ok((CompleteByteSlice(b""), Entry::Comment("test")))
+            str_err!(entry_with_type::<Error>(mkspan("@Comment{test}"))),
+            Ok(("", Entry::Comment("test")))
         );
 
         let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            entry_with_type(CompleteByteSlice(b"@String{key=\"value\"}")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv)))
+            str_err!(entry_with_type::<Error>(mkspan("@String{key=\"value\"}"))),
+            Ok(("", Entry::Variable(kv)))
         );
 
         assert_eq!(
-            entry_with_type(CompleteByteSlice(b"@preamble{name # \"'s preamble\"}")),
+            str_err!(entry_with_type::<Error>(mkspan("@preamble{name # \"'s preamble\"}"))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
                 Entry::Preamble(vec![
                     StringValueType::Abbreviation("name"),
                     StringValueType::Str("'s preamble")
@@ -431,7 +526,7 @@ mod tests {
             ))
         );
 
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\" }";
@@ -442,28 +537,39 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            entry_with_type(CompleteByteSlice(bib_str)),
+            str_err!(entry_with_type::<Error>(mkspan(bib_str))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
     }
 
     #[test]
-    fn test_type_comment() {
+    fn test_entry_with_type_and_spaces() {
+        let kv = KeyValue::new("key", vec![StringValueType::Str("value")]);
         assert_eq!(
-            type_comment(CompleteByteSlice(b"@Comment{test}")),
-            Ok((CompleteByteSlice(b""), Entry::Comment("test")))
+            str_err!(entry_with_type::<Error>(mkspan("@ String{key=\"value\"}"))),
+            Ok(("", Entry::Variable(kv)))
+        );
+    }
+
+    #[test]
+    fn test_type_comment() {
+        let parse = type_comment::<Error>(mkspan("@Comment{test}"));
+
+        assert_eq!(
+            str_err!(parse),
+            Ok(("", Entry::Comment("test")))
         );
     }
 
     #[test]
     fn test_preamble() {
         assert_eq!(
-            preamble(CompleteByteSlice(b"@preamble{my preamble}")),
+            str_err!(preamble::<Error>(mkspan("@preamble{\"my preamble\"}"))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
                 Entry::Preamble(vec![StringValueType::Str("my preamble")])
             ))
         );
@@ -482,18 +588,18 @@ mod tests {
         );
 
         assert_eq!(
-            variable(CompleteByteSlice(b"@string{key=\"value\"}")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+            str_err!(variable::<Error>(mkspan("@string{key=\"value\"}"))),
+            Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            variable(CompleteByteSlice(b"@string( key=\"value\" )")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv2)))
+            str_err!(variable::<Error>(mkspan("@string( key=\"value\" )"))),
+            Ok(("", Entry::Variable(kv2)))
         );
 
         assert_eq!(
-            variable(CompleteByteSlice(b"@string( key=varone # vartwo)")),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv3)))
+            str_err!(variable::<Error>(mkspan("@string( key=varone # vartwo)"))),
+            Ok(("", Entry::Variable(kv3)))
         );
     }
 
@@ -508,14 +614,14 @@ mod tests {
         );
 
         assert_eq!(
-            variable_key_value_pair(CompleteByteSlice(b"key = varone # vartwo,")),
-            Ok((CompleteByteSlice(b","), kv))
+            str_err!(variable_key_value_pair::<Error>(mkspan("key = varone # vartwo,"))),
+            Ok((",", kv))
         );
     }
 
     #[test]
     fn test_bibliography_entry() {
-        let bib_str = b"@misc{ patashnik-bibtexing,
+        let bib_str = "@misc{ patashnik-bibtexing,
            author = \"Oren Patashnik\",
            title = \"BIBTEXing\",
            year = \"1988\", }";
@@ -526,9 +632,25 @@ mod tests {
             KeyValue::new("year", vec![StringValueType::Str("1988")]),
         ];
         assert_eq!(
-            bibliography_entry(CompleteByteSlice(bib_str)),
+            str_err!(bibliography_entry::<Error>(mkspan(bib_str))),
             Ok((
-                CompleteByteSlice(b""),
+                "",
+                Entry::Bibliography("misc", "patashnik-bibtexing", tags)
+            ))
+        );
+    }
+    #[test]
+    fn test_bibliography_entry_works_with_bracketed_strings_at_end() {
+        let bib_str = "@misc{ patashnik-bibtexing,
+           year = {1988}}";
+
+        let tags = vec![
+            KeyValue::new("year", vec![StringValueType::Str("1988")]),
+        ];
+        assert_eq!(
+            str_err!(bibliography_entry::<Error>(mkspan(bib_str))),
+            Ok((
+                "",
                 Entry::Bibliography("misc", "patashnik-bibtexing", tags)
             ))
         );
@@ -536,7 +658,7 @@ mod tests {
 
     #[test]
     fn test_bib_tags() {
-        let tags_str = b"author= \"Oren Patashnik\",
+        let tags_str = "author= \"Oren Patashnik\",
             year=1988,
             note= var # \"str\",
             title= { My new book }}";
@@ -554,21 +676,17 @@ mod tests {
             KeyValue::new("title", vec![StringValueType::Str("My new book")]),
         ];
         assert_eq!(
-            bib_tags(CompleteByteSlice(tags_str)),
-            Ok((CompleteByteSlice(b"}"), result))
+            str_err!(bib_tags::<Error>(mkspan(tags_str))),
+            Ok(("}", result))
         );
-    }
-
-    #[test]
-    fn test_entry_type() {
     }
 
     #[test]
     fn test_abbreviation_string() {
         assert_eq!(
-            abbreviation_string(CompleteByteSlice(b"var # \"string\",")),
+            str_err!(abbreviation_string::<Error>(mkspan("var # \"string\","))),
             Ok((
-                CompleteByteSlice(b","),
+                ",",
                 vec![
                     StringValueType::Abbreviation("var"),
                     StringValueType::Str("string"),
@@ -576,9 +694,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string(CompleteByteSlice(b"\"string\" # var,")),
+            str_err!(abbreviation_string::<Error>(mkspan("\"string\" # var,"))),
             Ok((
-                CompleteByteSlice(b","),
+                ",",
                 vec![
                     StringValueType::Str("string"),
                     StringValueType::Abbreviation("var"),
@@ -586,9 +704,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            abbreviation_string(CompleteByteSlice(b"string # var,")),
+            str_err!(abbreviation_string::<Error>(mkspan("string # var,"))),
             Ok((
-                CompleteByteSlice(b","),
+                ",",
                 vec![
                     StringValueType::Abbreviation("string"),
                     StringValueType::Abbreviation("var"),
@@ -598,12 +716,20 @@ mod tests {
     }
 
     #[test]
+    fn test_abbreviation_string_does_not_match_multiple_bare_words() {
+        assert_eq!(
+            str_err!(abbreviation_string::<()>(mkspan("var string"))),
+            Ok(("string", vec![StringValueType::Abbreviation("var")]))
+        );
+    }
+
+    #[test]
     fn test_abbreviation_only() {
         assert_eq!(
-            abbreviation_only(CompleteByteSlice(b" var ")),
+            str_err!(abbreviation_only::<Error>(mkspan(" var "))),
             Ok((
-                CompleteByteSlice(b""),
-                vec![StringValueType::Abbreviation("var")]
+                "",
+                StringValueType::Abbreviation("var")
             ))
         );
     }
@@ -611,10 +737,10 @@ mod tests {
     #[test]
     fn test_abbreviation_with_underscore() {
         assert_eq!(
-            abbreviation_only(CompleteByteSlice(b" IEEE_J_CAD ")),
+            str_err!(abbreviation_only::<Error>(mkspan(" IEEE_J_CAD "))),
             Ok((
-                CompleteByteSlice(b""),
-                vec![StringValueType::Abbreviation("IEEE_J_CAD")]
+                "",
+                StringValueType::Abbreviation("IEEE_J_CAD")
             ))
         );
     }
@@ -622,37 +748,48 @@ mod tests {
     #[test]
     fn test_bracketed_string() {
         assert_eq!(
-            bracketed_string(CompleteByteSlice(b"{ test }")),
-            Ok((CompleteByteSlice(b""), "test"))
+            str_err!(bracketed_string::<Error>(mkspan("{ test }"))),
+            Ok(("", "test"))
         );
         assert_eq!(
-            bracketed_string(CompleteByteSlice(b"{ {test} }")),
-            Ok((CompleteByteSlice(b""), "{test}"))
+            str_err!(bracketed_string::<Error>(mkspan("{ test word}"))),
+            Ok(("", "test word"))
         );
-        assert!(bracketed_string(CompleteByteSlice(b"{ @{test} }")).is_err());
+        assert_eq!(
+            str_err!(bracketed_string::<Error>(mkspan("{ {test} }"))),
+            Ok(("", "{test}"))
+        );
+        assert!(bracketed_string::<Error>(mkspan("{ @{test} }")).is_err());
+    }
+    #[test]
+    fn test_bracketed_string_takes_the_correct_amount_of_brackets() {
+        assert_eq!(
+            str_err!(bracketed_string::<Error>(mkspan("{ test }} } }"))),
+            Ok(("} } }", "test"))
+        );
     }
 
     #[test]
     fn test_quoted_string() {
         assert_eq!(
-            quoted_string(CompleteByteSlice(b"\"test\"")),
-            Ok((CompleteByteSlice(b""), "test"))
+            str_err!(quoted_string::<Error>(mkspan("\"test\""))),
+            Ok(("", "test"))
         );
         assert_eq!(
-            quoted_string(CompleteByteSlice(b"\"test \"")),
-            Ok((CompleteByteSlice(b""), "test "))
+            str_err!(quoted_string::<Error>(mkspan("\"test \""))),
+            Ok(("", "test "))
         );
         assert_eq!(
-            quoted_string(CompleteByteSlice(b"\"{\"test\"}\"")),
-            Ok((CompleteByteSlice(b""), "{\"test\"}"))
+            str_err!(quoted_string::<Error>(mkspan("\"{\"test\"}\""))),
+            Ok(("", "{\"test\"}"))
         );
         assert_eq!(
-            quoted_string(CompleteByteSlice(b"\"A {bunch {of} braces {in}} title\"")),
-            Ok((CompleteByteSlice(b""), "A {bunch {of} braces {in}} title"))
+            str_err!(quoted_string::<Error>(mkspan("\"A {bunch {of} braces {in}} title\""))),
+            Ok(("", "A {bunch {of} braces {in}} title"))
         );
         assert_eq!(
-            quoted_string(CompleteByteSlice(b"\"Simon {\"}the {saint\"} Templar\"")),
-            Ok((CompleteByteSlice(b""), "Simon {\"}the {saint\"} Templar"))
+            str_err!(quoted_string::<Error>(mkspan("\"Simon {\"}the {saint\"} Templar\""))),
+            Ok(("", "Simon {\"}the {saint\"} Templar"))
         );
     }
 
@@ -661,10 +798,10 @@ mod tests {
         let kv1 = KeyValue::new("IEEE_J_ANNE", vec![StringValueType::Str("{IEEE} Trans. Aeronaut. Navig. Electron.")]);
 
         assert_eq!(
-            variable(CompleteByteSlice(
-                b"@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}"
+            str_err!(variable::<Error>(
+                mkspan("@string{IEEE_J_ANNE       = \"{IEEE} Trans. Aeronaut. Navig. Electron.\"}")
             )),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+            Ok(("", Entry::Variable(kv1)))
         );
     }
 
@@ -676,24 +813,24 @@ mod tests {
         );
 
         assert_eq!(
-            variable(CompleteByteSlice(
-                b"@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}"
+            str_err!(variable::<Error>(
+                mkspan("@STRING{IEEE_J_B-ME       = \"{IEEE} Trans. Bio-Med. Eng.\"}")
             )),
-            Ok((CompleteByteSlice(b""), Entry::Variable(kv1)))
+            Ok(("", Entry::Variable(kv1)))
         );
 
         assert_eq!(
-            abbreviation_only(CompleteByteSlice(b" IEE_j_B-ME ")),
+            str_err!(abbreviation_only::<Error>(mkspan(" IEE_j_B-ME "))),
             Ok((
-                CompleteByteSlice(b""),
-                vec![StringValueType::Abbreviation("IEE_j_B-ME")]
+                "",
+                StringValueType::Abbreviation("IEE_j_B-ME")
             ))
         );
     }
 
     #[test]
     fn malformed_entries_produce_errors() {
-        let bib_str = b"
+        let bib_str = "
             @Article{coussy_et_al_word_length_HLS,
               author    = {Philippe Coussy and Ghizlane Lhairech-Lebreton and Dominique Heller},
               title     = {Multiple Word-Length High-Level Synthesis},
@@ -729,7 +866,7 @@ mod tests {
             }";
 
         assert!(
-            !entries(CompleteByteSlice(bib_str)).is_ok(),
+            !entries(bib_str).is_ok(),
             "Malformed entries list parsed correctly"
         );
     }
