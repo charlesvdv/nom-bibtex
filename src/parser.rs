@@ -286,15 +286,12 @@ def_parser!(variable(input) -> Entry; {
 });
 
 // Handle a preamble of the format:
-// @Preamble { my preamble }
+// @Preamble { "my preamble" }
 def_parser!(preamble(input) -> Entry; {
     chain_parsers!(input, rest;
         entry_type,
         pws!(_char('{')),
-        alt((
-            abbreviation_string,
-            map(take_until("}"), |v| vec![StringValueType::Str(span_to_str(v).into())]),
-        )) => preamble,
+        abbreviation_string => preamble,
         pws!(_char('}'))
     );
     Ok((rest, Entry::Preamble(preamble)))
@@ -382,7 +379,7 @@ def_parser!(entry(input) -> Entry; {
     pws!(
         alt((
             entry_with_type,
-            map(no_type_comment, |v| Entry::Comment(v.into()))
+            map(no_type_comment, |v| Entry::Comment(v.to_string().trim().into()))
         ))
     )(input)
 });
