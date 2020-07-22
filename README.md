@@ -1,5 +1,5 @@
 # nom-bibtex
-[![Build Status](https://travis-ci.org/charlesvdv/nom-bibtex.svg?branch=master)](https://travis-ci.org/charlesvdv/nom-bibtex)
+![Rust](https://github.com/charlesvdv/nom-bibtex/workflows/Rust/badge.svg)
 [![Docs Badge](https://docs.rs/nom-bibtex/badge.svg)](https://docs.rs/nom-bibtex)
 [![crates.io](http://meritbadge.herokuapp.com/nom-bibtex)](https://crates.io/crates/nom-bibtex)
 
