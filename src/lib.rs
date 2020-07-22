@@ -15,7 +15,7 @@
 //! use nom_bibtex::*;
 //!
 //! const BIBFILE_DATA: &str = "@preamble{
-//!         A bibtex preamble
+//!         \"A bibtex preamble\" # \" another test\" 
 //!     }
 //!
 //!     @Comment{
@@ -38,7 +38,7 @@
 //!     let bibtex = Bibtex::parse(BIBFILE_DATA).unwrap();
 //!
 //!     let preambles = bibtex.preambles();
-//!     assert_eq!(preambles[0], "A bibtex preamble");
+//!     assert_eq!(preambles[0], "A bibtex preamble another test");
 //!
 //!     let comments = bibtex.comments();
 //!     assert_eq!(comments[0], "Here is a comment.");

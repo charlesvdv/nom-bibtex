@@ -20,7 +20,7 @@ extern crate nom_bibtex;
 use nom_bibtex::*;
 
 const BIBFILE_DATA: &str = "@preamble{
-        A bibtex preamble
+        \"A bibtex preamble\"
     }
 
     @Comment{
