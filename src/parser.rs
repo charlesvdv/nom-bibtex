@@ -167,13 +167,6 @@ def_parser!(bracketed_string(input) -> &str; {
             } else {
                 brackets_queue -= 1;
             },
-            // TODO: Verify that this should be here
-            '"' => if brackets_queue == 0 {
-                return Err(nom::Err::Error(E::from_char(input, '}')));
-            },
-            '@' => {
-                return Err(nom::Err::Error(E::from_char(input, '}')));
-            }
             _ => continue,
         }
     }
@@ -832,8 +825,19 @@ mod tests {
             str_err!(bracketed_string::<Error>(mkspan("{ {test} }"))),
             Ok(("", "{test}"))
         );
-        assert!(bracketed_string::<Error>(mkspan("{ @{test} }")).is_err());
+        // assert!(bracketed_string::<Error>(mkspan("{ @{test} }")).is_err());
+
+        assert_eq!(
+            str_err!(bracketed_string::<Error>(mkspan("{True: love and @jlo}"))),
+            Ok(("", "True: love and @jlo"))
+        );
+
+        assert_eq!(
+            str_err!(bracketed_string::<Error>(mkspan("{True: love and \"Trump\"}"))),
+            Ok(("", "True: love and \"Trump\""))
+        );
     }
+
     #[test]
     fn test_bracketed_string_takes_the_correct_amount_of_brackets() {
         assert_eq!(
@@ -951,4 +955,5 @@ mod tests {
             ";
         entries::<Error>(mkspan(file)).unwrap();
     }
+
 }
