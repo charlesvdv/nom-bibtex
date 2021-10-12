@@ -7,11 +7,9 @@ quick_error! {
     #[derive(Debug, PartialEq, Eq)]
     pub enum BibtexError {
         Parsing (descr: String) {
-            description(descr)
             display(me) -> ("Parsing error. Reason: {}", descr)
         }
         StringVariableNotFound (var: String) {
-            description("String variable not found.")
             display(me) -> ("String variable not found: {}", var)
         }
     }
