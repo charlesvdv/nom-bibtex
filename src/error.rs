@@ -8,11 +8,11 @@ quick_error! {
     pub enum BibtexError {
         Parsing (descr: String) {
             description(descr)
-            display(me) -> ("Parsing error. Reason: {}", me.to_string())
+            display(me) -> ("Parsing error. Reason: {}", descr)
         }
         StringVariableNotFound (var: String) {
             description("String variable not found.")
-            display(me) -> ("{}: {}", me.to_string(), var)
+            display(me) -> ("String variable not found: {}", var)
         }
     }
 }
