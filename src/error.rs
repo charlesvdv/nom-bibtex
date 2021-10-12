@@ -7,12 +7,10 @@ quick_error! {
     #[derive(Debug, PartialEq, Eq)]
     pub enum BibtexError {
         Parsing (descr: String) {
-            description(descr)
-            display(me) -> ("Parsing error. Reason: {}", me.to_string())
+            display(me) -> ("Parsing error. Reason: {}", descr)
         }
         StringVariableNotFound (var: String) {
-            description("String variable not found.")
-            display(me) -> ("{}: {}", me.to_string(), var)
+            display(me) -> ("String variable not found: {}", var)
         }
     }
 }
@@ -47,5 +45,19 @@ impl BibtexError {
             },
         };
         BibtexError::Parsing(descr)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_impls() {
+        let err = BibtexError::Parsing("<some reason>".into());
+        assert_eq!(format!("{}", err), "Parsing error. Reason: <some reason>");
+
+        let err = BibtexError::StringVariableNotFound("<variable>".into());
+        assert_eq!(format!("{}", err), "String variable not found: <variable>");
     }
 }
