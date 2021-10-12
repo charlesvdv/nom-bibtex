@@ -49,3 +49,17 @@ impl BibtexError {
         BibtexError::Parsing(descr)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_impls() {
+        let err = BibtexError::Parsing("<some reason>".into());
+        assert_eq!(format!("{}", err), "Parsing error. Reason: <some reason>");
+
+        let err = BibtexError::StringVariableNotFound("<variable>".into());
+        assert_eq!(format!("{}", err), "String variable not found: <variable>");
+    }
+}
