@@ -1,6 +1,7 @@
 use crate::error::BibtexError;
 use crate::parser;
 use crate::parser::{Entry, mkspan, Span};
+use std::collections::HashSet;
 use std::result;
 use std::str;
 use nom::error::VerboseError;
@@ -121,6 +122,9 @@ impl Bibtex {
     }
 
     fn expand_str_abbreviations(value: Vec<StringValueType>, bibtex: &Bibtex) -> Result<String> {
+        let months = HashSet::from([
+            "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+            ]);
         let mut result = String::new();
 
         for chunck in value {
@@ -130,9 +134,16 @@ impl Bibtex {
                     let var = bibtex
                         .variables
                         .iter()
-                        .find(|&x| v == x.0)
-                        .ok_or_else(|| BibtexError::StringVariableNotFound(v.into()))?;
-                    result.push_str(&var.1);
+                        .find(|&x| v == x.0);
+                    if let Some((_, expansion)) = var {
+                        result.push_str(&expansion);
+                    } else {
+                        if let Some(&month) = months.get(&v.to_lowercase() as &str) {
+                            result.push_str(month)
+                        } else {
+                            return Err(BibtexError::StringVariableNotFound(v.into()));
+                        }
+                    }
                 }
             }
         }
