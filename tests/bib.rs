@@ -40,3 +40,18 @@ fn test_bib() {
     assert_eq!(b2.citation_key(), "knuthwebsite");
     assert_eq!(b2.tags()[0], ("author".into(), "Donald Knuth".into()));
 }
+
+#[test]
+fn test_month_abbreviation() {
+    let bib_str = "
+        @book{test,
+            title = {Example Book},
+            author = {Example Author},
+            year = 2021,
+            month = jan,
+        }
+        ";
+    let bibtex = Bibtex::parse(&bib_str).unwrap();
+    let b0 = &bibtex.bibliographies()[0];
+    assert_eq!(b0.tags()[3], ("month".into(), "jan".into()));
+}
