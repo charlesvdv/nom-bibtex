@@ -1,17 +1,26 @@
 use crate::error::BibtexError;
 use crate::parser;
 use crate::parser::{Entry, mkspan, Span};
+use std::collections::HashMap;
 use std::result;
 use std::str;
 use nom::error::VerboseError;
 
 type Result<T> = result::Result<T, BibtexError>;
 
+const TABLE_MONTHS: [(&'static str, &'static str); 12] = [
+    ("jan", "January"), ("feb", "February"), ("mar", "March"),
+    ("apr", "April"),   ("may", "May"),      ("jun", "June"),
+    ("jul", "July"),    ("aug", "August"),   ("sep", "September"),
+    ("oct", "October"), ("nov", "November"), ("dec", "December"),
+];
+
 /// A high-level definition of a bibtex file.
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct Bibtex {
     comments: Vec<String>,
     preambles: Vec<String>,
+    const_map: HashMap<&'static str, &'static str>,
     variables: Vec<(String, String)>,
     bibliographies: Vec<Bibliography>,
 }
@@ -23,6 +32,7 @@ impl Bibtex {
 
         let mut bibtex = Bibtex::default();
 
+        Self::fill_constants(&mut bibtex)?;
         Self::fill_variables(&mut bibtex, &entries)?;
 
         for entry in entries {
@@ -81,6 +91,13 @@ impl Bibtex {
         &self.bibliographies
     }
 
+    fn fill_constants(bibtex: &mut Bibtex) -> Result<()> {
+        for m in &TABLE_MONTHS {
+            bibtex.const_map.insert(m.0, m.1);
+        }
+        Ok(())
+    }
+
     fn fill_variables(bibtex: &mut Bibtex, entries: &[Entry]) -> Result<()> {
         let variables = entries
             .iter()
@@ -127,12 +144,15 @@ impl Bibtex {
             match chunck {
                 StringValueType::Str(v) => result.push_str(&v),
                 StringValueType::Abbreviation(v) => {
-                    let var = bibtex
-                        .variables
-                        .iter()
-                        .find(|&x| v == x.0)
-                        .ok_or_else(|| BibtexError::StringVariableNotFound(v.into()))?;
-                    result.push_str(&var.1);
+                    let var = bibtex.variables.iter().find(|&x| v == x.0);
+                    if let Some(res) = var {
+                        result.push_str(&res.1)
+                    } else {
+                        match bibtex.const_map.get(v.as_str()) {
+                            Some(res) => result.push_str(res),
+                            None => return Err(BibtexError::StringVariableNotFound(v.into())),
+                        }
+                    }
                 }
             }
         }
