@@ -18,25 +18,22 @@ fn test_bib() {
     let bibtex = Bibtex::parse(&bib_str).unwrap();
 
     let vars = bibtex.variables();
-    assert_eq!(vars[0], ("donald".into(), "Donald Knuth".into()));
-    assert_eq!(vars[1], ("mass".into(), "Massachusetts".into()));
+    assert_eq!(vars["donald"], "Donald Knuth");
+    assert_eq!(vars["mass"], "Massachusetts");
 
     assert_eq!(bibtex.preambles()[0], "Why not a preamble".to_string());
 
     let b0 = &bibtex.bibliographies()[0];
     assert_eq!(b0.entry_type(), "article");
     assert_eq!(b0.citation_key(), "einstein");
-    assert_eq!(b0.tags()[0], ("author".into(), "Albert Einstein".into()));
-    assert_eq!(b0.tags()[4], ("number".into(), "10".into()));
+    assert_eq!(b0.tags()["author"], "Albert Einstein");
+    assert_eq!(b0.tags()["number"], "10");
 
     let b1 = &bibtex.bibliographies()[1];
     assert_eq!(b1.citation_key(), "latexcompanion");
-    assert_eq!(
-        b1.tags()[4],
-        ("address".into(), "Reading, Massachusetts".into())
-    );
+    assert_eq!(b1.tags()["address"], "Reading, Massachusetts");
 
     let b2 = &bibtex.bibliographies()[2];
     assert_eq!(b2.citation_key(), "knuthwebsite");
-    assert_eq!(b2.tags()[0], ("author".into(), "Donald Knuth".into()));
+    assert_eq!(b2.tags()["author"], "Donald Knuth");
 }

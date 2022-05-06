@@ -29,7 +29,7 @@ pub struct Bibtex {
     comments: Vec<String>,
     preambles: Vec<String>,
     const_map: HashMap<&'static str, &'static str>,
-    variables: Vec<(String, String)>,
+    variables: HashMap<String, String>,
     bibliographies: Vec<Bibliography>,
 }
 
@@ -52,13 +52,15 @@ impl Bibtex {
                     bibtex.preambles.push(new_val);
                 }
                 Entry::Bibliography(entry_t, citation_key, tags) => {
-                    let mut new_tags = vec![];
-                    for tag in tags {
-                        new_tags.push((
-                            tag.key,
-                            Self::expand_str_abbreviations(tag.value, &bibtex)?,
-                        ))
-                    }
+                    let new_tags = tags
+                        .into_iter()
+                        .filter_map(|tag| {
+                            let key = tag.key.to_lowercase();
+                            let value = Self::expand_str_abbreviations(tag.value, &bibtex).ok()?;
+                            Some((key, value))
+                        })
+                        .collect::<HashMap<_, _>>();
+
                     bibtex
                         .bibliographies
                         .push(Bibliography::new(entry_t, citation_key, new_tags));
@@ -88,7 +90,9 @@ impl Bibtex {
     }
 
     /// Get string variables with a tuple of key and expanded value.
-    pub fn variables(&self) -> &[(String, String)] {
+    ///
+    /// The keys in the HashMap use lowercase.
+    pub fn variables(&self) -> &HashMap<String, String> {
         &self.variables
     }
 
@@ -113,12 +117,13 @@ impl Bibtex {
             })
             .collect::<Vec<_>>();
 
-        for var in &variables {
-            bibtex.variables.push((
-                var.key.clone(),
-                Self::expand_variables_value(&var.value, &variables)?,
-            ));
-        }
+        bibtex.variables = variables
+            .iter()
+            .filter_map(|var| {
+                let value = Self::expand_variables_value(&var.value, &variables).ok()?;
+                Some((var.key.clone(), value))
+            })
+            .collect();
 
         Ok(())
     }
@@ -151,9 +156,9 @@ impl Bibtex {
             match chunck {
                 StringValueType::Str(v) => result.push_str(&v),
                 StringValueType::Abbreviation(v) => {
-                    let var = bibtex.variables.iter().find(|&x| v == x.0);
+                    let var = bibtex.variables.iter().find(|&x| &v == x.0);
                     if let Some(res) = var {
-                        result.push_str(&res.1)
+                        result.push_str(res.1)
                     } else {
                         match bibtex.const_map.get(v.as_str()) {
                             Some(res) => result.push_str(res),
@@ -172,7 +177,7 @@ impl Bibtex {
 pub struct Bibliography {
     entry_type: String,
     citation_key: String,
-    tags: Vec<(String, String)>,
+    tags: HashMap<String, String>,
 }
 
 impl Bibliography {
@@ -180,7 +185,7 @@ impl Bibliography {
     pub fn new(
         entry_type: String,
         citation_key: String,
-        tags: Vec<(String, String)>,
+        tags: HashMap<String, String>,
     ) -> Bibliography {
         Bibliography {
             entry_type,
@@ -208,7 +213,9 @@ impl Bibliography {
     ///
     /// Tags are the specifics information about a bibliography
     /// such as author, date, title, ...
-    pub fn tags(&self) -> &[(String, String)] {
+    ///
+    /// The keys in the HashMap use lowercase.
+    pub fn tags(&self) -> &HashMap<String, String> {
         &self.tags
     }
 }

@@ -50,17 +50,17 @@ fn main() {
     assert_eq!(comments[1], "Another comment!");
 
     let variables = bibtex.variables();
-    assert_eq!(variables[0], ("name".into(), "Charles Vandevoorde".into()));
-    assert_eq!(variables[1], ("github".into(), "https://github.com/charlesvdv".into()));
+    assert_eq!(variables["name"], "Charles Vandevoorde");
+    assert_eq!(variables["github"], "https://github.com/charlesvdv");
 
     let biblio = &bibtex.bibliographies()[0];
     assert_eq!(biblio.entry_type(), "misc");
     assert_eq!(biblio.citation_key(), "my_citation_key");
 
     let bib_tags = biblio.tags();
-    assert_eq!(bib_tags[0], ("author".into(), "Charles Vandevoorde".into()));
-    assert_eq!(bib_tags[1], ("title".into(), "nom-bibtex".into()));
-    assert_eq!(bib_tags[2], ("note".into(), "Github: https://github.com/charlesvdv".into()));
+    assert_eq!(bib_tags["author"], "Charles Vandevoorde");
+    assert_eq!(bib_tags["title"], "nom-bibtex");
+    assert_eq!(bib_tags["note"], "Github: https://github.com/charlesvdv");
 }
 ```
 
