@@ -14,8 +14,8 @@
 //! extern crate nom_bibtex;
 //! use nom_bibtex::*;
 //!
-//! const BIBFILE_DATA: &str = "@preamble{
-//!         \"A bibtex preamble\" # \" another test\" 
+//! const BIBFILE_DATA: &str = r#"@preamble{
+//!         "A bibtex preamble" # " another test" 
 //!     }
 //!
 //!     @Comment{
@@ -24,15 +24,15 @@
 //!
 //!     Another comment!
 //!
-//!     @string ( name= \"Charles Vandevoorde\")
-//!     @string (github = \"https://github.com/charlesvdv\")
+//!     @string ( name= "Charles Vandevoorde")
+//!     @string (github = "https://github.com/charlesvdv")
 //!
 //!     @misc {my_citation_key,
 //!         author= name,
-//!         title = \"nom-bibtex\",
-//!         note = \"Github: \" # github
+//!         title = "nom-bibtex",
+//!         note = "Github: " # github
 //!     }
-//! ";
+//! "#;
 //!
 //! fn main() {
 //!     let bibtex = Bibtex::parse(BIBFILE_DATA).unwrap();
