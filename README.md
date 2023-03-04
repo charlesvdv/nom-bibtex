@@ -19,8 +19,8 @@ A feature complete *BibTeX* parser using [nom](https://github.com/Geal/nom).
 extern crate nom_bibtex;
 use nom_bibtex::*;
 
-const BIBFILE_DATA: &str = "@preamble{
-        \"A bibtex preamble\"
+const BIBFILE_DATA: &str = r#"@preamble{
+        "A bibtex preamble"
     }
 
     @Comment{
@@ -29,15 +29,15 @@ const BIBFILE_DATA: &str = "@preamble{
 
     Another comment!
 
-    @string ( name= \"Charles Vandevoorde\")
-    @string (github = \"https://github.com/charlesvdv\")
+    @string ( name= "Charles Vandevoorde")
+    @string (github = "https://github.com/charlesvdv")
 
     @misc {my_citation_key,
         author= name,
-        title = \"nom-bibtex\",
-        note = \"Github: \" # github
+        title = "nom-bibtex",
+        note = "Github: " # github
     }
-";
+"#;
 
 fn main() {
     let bibtex = Bibtex::parse(BIBFILE_DATA).unwrap();
