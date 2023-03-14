@@ -1,7 +1,7 @@
-use nom::Err;
-use nom::error::{ErrorKind, VerboseError, convert_error};
-use quick_error::quick_error;
 use crate::parser::Span;
+use nom::error::{convert_error, ErrorKind, VerboseError};
+use nom::Err;
+use quick_error::quick_error;
 
 quick_error! {
     #[derive(Debug, PartialEq, Eq)]
@@ -21,9 +21,7 @@ impl<'a> From<Err<(&str, ErrorKind)>> for BibtexError {
     fn from(err: Err<(&str, ErrorKind)>) -> BibtexError {
         let descr = match err {
             Err::Incomplete(e) => format!("Incomplete: {:?}", e),
-            Err::Error((_, e)) | Err::Failure((_, e)) => {
-                e.description().into()
-            },
+            Err::Error((_, e)) | Err::Failure((_, e)) => e.description().into(),
         };
         BibtexError::Parsing(descr)
     }
@@ -37,12 +35,14 @@ impl BibtexError {
                 // Convert_error does not like spans, so we need to
                 // convert the error
                 let e_ = VerboseError {
-                    errors: e.errors.into_iter()
+                    errors: e
+                        .errors
+                        .into_iter()
                         .map(|(span, kind)| (*span.fragment(), kind))
-                        .collect()
+                        .collect(),
                 };
                 convert_error(input, e_)
-            },
+            }
         };
         BibtexError::Parsing(descr)
     }

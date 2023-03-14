@@ -1,18 +1,26 @@
 use crate::error::BibtexError;
 use crate::parser;
-use crate::parser::{Entry, mkspan, Span};
+use crate::parser::{mkspan, Entry, Span};
+use nom::error::VerboseError;
 use std::collections::HashMap;
 use std::result;
 use std::str;
-use nom::error::VerboseError;
 
 type Result<T> = result::Result<T, BibtexError>;
 
 const TABLE_MONTHS: [(&'static str, &'static str); 12] = [
-    ("jan", "January"), ("feb", "February"), ("mar", "March"),
-    ("apr", "April"),   ("may", "May"),      ("jun", "June"),
-    ("jul", "July"),    ("aug", "August"),   ("sep", "September"),
-    ("oct", "October"), ("nov", "November"), ("dec", "December"),
+    ("jan", "January"),
+    ("feb", "February"),
+    ("mar", "March"),
+    ("apr", "April"),
+    ("may", "May"),
+    ("jun", "June"),
+    ("jul", "July"),
+    ("aug", "August"),
+    ("sep", "September"),
+    ("oct", "October"),
+    ("nov", "November"),
+    ("dec", "December"),
 ];
 
 /// A high-level definition of a bibtex file.
@@ -65,9 +73,7 @@ impl Bibtex {
         let span = mkspan(bibtex);
         match parser::entries::<VerboseError<Span>>(span) {
             Ok((_, v)) => Ok(v),
-            Err(e) => {
-                Err(BibtexError::with_context(bibtex, e))
-            },
+            Err(e) => Err(BibtexError::with_context(bibtex, e)),
         }
     }
 
@@ -104,7 +110,8 @@ impl Bibtex {
             .filter_map(|v| match v {
                 &Entry::Variable(ref v) => Some(v),
                 _ => None,
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
         for var in &variables {
             bibtex.variables.push((

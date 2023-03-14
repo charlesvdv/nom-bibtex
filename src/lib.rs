@@ -15,7 +15,7 @@
 //! use nom_bibtex::*;
 //!
 //! const BIBFILE_DATA: &str = r#"@preamble{
-//!         "A bibtex preamble" # " another test" 
+//!         "A bibtex preamble" # " another test"
 //!     }
 //!
 //!     @Comment{
