@@ -6,50 +6,31 @@
 // // that macros are use inside of each others..
 //
 use crate::model::{KeyValue, StringValueType};
-use nom::IResult;
-use nom::error::ParseError;
-use nom::{
-    character::complete::{
-        multispace0,
-        digit1,
-    },
-    bytes::complete::{
-        take_while1,
-        is_not,
-        take_until,
-    },
-    sequence::{
-        preceded,
-        delimited,
-        separated_pair,
-        tuple,
-    },
-    multi::{
-        separated_nonempty_list,
-        separated_list,
-    },
-    combinator::{
-        map,
-        peek,
-        opt,
-    },
-    branch::alt,
-    AsChar,
-    Slice,
-};
 use nom::character::complete::char as _char;
-use std::str;
+use nom::error::ParseError;
+use nom::IResult;
+use nom::{
+    branch::alt,
+    bytes::complete::{is_not, take_until, take_while1},
+    character::complete::{digit1, multispace0},
+    combinator::{map, opt, peek},
+    multi::{separated_list0, separated_list1},
+    sequence::{delimited, preceded, separated_pair, tuple},
+    AsChar, Slice,
+};
 use nom_locate::LocatedSpan;
 #[cfg(feature = "trace")]
 use nom_tracable::tracable_parser;
 use nom_tracable::TracableInfo;
+use std::num::NonZeroUsize;
+use std::str;
 
+const NEEDED_ONE: nom::Needed = nom::Needed::Size(unsafe { NonZeroUsize::new_unchecked(1) });
 
 pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
 pub fn mkspan<'a>(s: &'a str) -> Span<'a> {
     Span::new_extra(s, TracableInfo::new())
 }
-
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Entry {
@@ -113,7 +94,7 @@ macro_rules! optional_ident {
 */
 macro_rules! chain_parsers {
     ($input:ident, $rest:ident; $( $parser:expr $(=> $name:ident)? ),+) => {
-        let parser = tuple(( $( $parser ),* ));
+        let mut parser = tuple(( $( $parser ),* ));
         let (
             $rest,
             ( $( optional_ident!($($name)?) ),* )
@@ -151,7 +132,7 @@ def_parser!(bracketed_string(input) -> &str; {
             return Err(nom::Err::Error(E::from_char(input, '{')));
         }
         None => {
-            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+            return Err(nom::Err::Incomplete(NEEDED_ONE));
         }
     }
 
@@ -183,7 +164,7 @@ def_parser!(quoted_string(input) -> &str; {
             return Err(nom::Err::Error(E::from_char(input, '"')));
         }
         None => {
-            return Err(nom::Err::Incomplete(nom::Needed::Size(1)));
+            return Err(nom::Err::Incomplete(NEEDED_ONE));
         }
     }
     let mut brackets_queue = 0;
@@ -211,7 +192,7 @@ def_parser!(quoted_string(input) -> &str; {
 });
 
 def_parser!(pub abbreviation_string(input) -> Vec<StringValueType>; {
-    separated_nonempty_list(
+    separated_list1(
         pws!(_char('#')),
         pws!(
             alt((
@@ -292,7 +273,7 @@ def_parser!(preamble(input) -> Entry; {
 
 // Parse all the tags used by one bibliography entry separated by a comma.
 def_parser!(bib_tags(input) -> Vec<KeyValue>; {
-    separated_list(
+    separated_list0(
         dws!(_char(',')),
         map(
             separated_pair(

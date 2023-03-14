@@ -10,7 +10,7 @@ keywords = ["bibtex", "latex", "parser", "nom"]
 repository = "https://github.com/charlesvdv/nom-bibtex"
 documentation = "https://docs.rs/nom-bibtex"
 
-edition = "2018"
+edition = "2021"
 
 license = "MIT"
 
@@ -18,10 +18,10 @@ license = "MIT"
 name = "nom_bibtex"
 
 [dependencies]
-nom = "5.1.0"
-quick-error = "1.2.*"
-nom-tracable = "0.5.2"
-nom_locate = "2.0.0"
+nom = "7.1.0"
+quick-error = "2.0"
+nom-tracable = "0.8"
+nom_locate = "4.1"
 
 [features]
 default = []
