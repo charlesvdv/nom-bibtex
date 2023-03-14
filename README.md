@@ -1,9 +1,9 @@
 # nom-bibtex
-![Rust](https://github.com/charlesvdv/nom-bibtex/workflows/Rust/badge.svg)
+[![Rust](https://github.com/charlesvdv/nom-bibtex/workflows/Rust/badge.svg)](https://github.com/charlesvdv/nom-bibtex/actions)
 [![Docs Badge](https://docs.rs/nom-bibtex/badge.svg)](https://docs.rs/nom-bibtex)
-[![crates.io](http://meritbadge.herokuapp.com/nom-bibtex)](https://crates.io/crates/nom-bibtex)
+[![crates.io](https://img.shields.io/crates/v/nom-bibtex.svg)](https://crates.io/crates/nom-bibtex)
 
-A feature complete *BibTeX* parser using [nom](https://github.com/Geal/nom).
+A feature complete *BibTeX* parser using [nom](https://github.com/rust-bakery/nom).
 
 **nom-bibtex** can parse the four differents types of entries listed in the
 [BibTeX format description](http://www.bibtex.org/Format/):

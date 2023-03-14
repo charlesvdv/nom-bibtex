@@ -10,15 +10,12 @@ keywords = ["bibtex", "latex", "parser", "nom"]
 repository = "https://github.com/charlesvdv/nom-bibtex"
 documentation = "https://docs.rs/nom-bibtex"
 
-edition="2018"
+edition = "2018"
 
 license = "MIT"
 
 [lib]
 name = "nom_bibtex"
-
-[badges]
-travis-ci = { repository = "charlesvdv/nom-bibtex" }
 
 [dependencies]
 nom = "5.1.0"
