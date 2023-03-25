@@ -8,7 +8,7 @@ use std::str;
 
 type Result<T> = result::Result<T, BibtexError>;
 
-const TABLE_MONTHS: [(&'static str, &'static str); 12] = [
+const TABLE_MONTHS: [(&str, &str); 12] = [
     ("jan", "January"),
     ("feb", "February"),
     ("mar", "March"),
@@ -55,7 +55,7 @@ impl Bibtex {
                     let mut new_tags = vec![];
                     for tag in tags {
                         new_tags.push((
-                            tag.key.into(),
+                            tag.key,
                             Self::expand_str_abbreviations(tag.value, &bibtex)?,
                         ))
                     }
@@ -108,7 +108,7 @@ impl Bibtex {
         let variables = entries
             .iter()
             .filter_map(|v| match v {
-                &Entry::Variable(ref v) => Some(v),
+                Entry::Variable(v) => Some(v),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -136,8 +136,8 @@ impl Bibtex {
                     let var = variables
                         .iter()
                         .find(|&x| *v == x.key)
-                        .ok_or_else(|| BibtexError::StringVariableNotFound(v.into()))?;
-                    result_value.push_str(&Self::expand_variables_value(&var.value, &variables)?);
+                        .ok_or(BibtexError::StringVariableNotFound(v))?;
+                    result_value.push_str(&Self::expand_variables_value(&var.value, variables)?);
                 }
             }
         }
@@ -157,7 +157,7 @@ impl Bibtex {
                     } else {
                         match bibtex.const_map.get(v.as_str()) {
                             Some(res) => result.push_str(res),
-                            None => return Err(BibtexError::StringVariableNotFound(v.into())),
+                            None => return Err(BibtexError::StringVariableNotFound(v)),
                         }
                     }
                 }

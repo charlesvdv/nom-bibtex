@@ -28,7 +28,7 @@ use std::str;
 const NEEDED_ONE: nom::Needed = nom::Needed::Size(unsafe { NonZeroUsize::new_unchecked(1) });
 
 pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
-pub fn mkspan<'a>(s: &'a str) -> Span<'a> {
+pub fn mkspan(s: &str) -> Span<'_> {
     Span::new_extra(s, TracableInfo::new())
 }
 
@@ -106,7 +106,7 @@ macro_rules! chain_parsers {
 }
 
 // Converts a span into a raw string
-fn span_to_str<'a>(span: Span<'a>) -> &'a str {
+fn span_to_str(span: Span<'_>) -> &str {
     span.fragment()
 }
 
@@ -129,7 +129,7 @@ def_parser!(abbreviation_only(input) -> StringValueType; {
 // Only used for bibliography tags.
 def_parser!(bracketed_string(input) -> &str; {
     // We are not in a bracketed_string.
-    match input.fragment().chars().nth(0) {
+    match input.fragment().chars().next() {
         Some('{') => {},
         Some(_) => {
             return Err(nom::Err::Error(E::from_char(input, '{')));
@@ -144,7 +144,7 @@ def_parser!(bracketed_string(input) -> &str; {
     let mut last_idx = 0;
     for (i, c) in input.fragment().char_indices().skip(1) {
         last_idx = i+1;
-        match c as char {
+        match c {
             '{' => brackets_queue += 1,
             '}' => if brackets_queue == 0 {
                 break;
@@ -161,7 +161,7 @@ def_parser!(bracketed_string(input) -> &str; {
 });
 
 def_parser!(quoted_string(input) -> &str; {
-    match input.fragment().chars().nth(0) {
+    match input.fragment().chars().next() {
         Some('"') => {},
         Some(_) => {
             return Err(nom::Err::Error(E::from_char(input, '"')));
@@ -174,7 +174,7 @@ def_parser!(quoted_string(input) -> &str; {
     let mut last_idx = 0;
     for (i, c) in input.fragment().char_indices().skip(1) {
         last_idx = i+1;
-        match c as char {
+        match c {
             '{' => brackets_queue += 1,
             '}' => {
                 brackets_queue -= 1;
@@ -231,7 +231,7 @@ def_parser!(variable_key_value_pair(input) -> KeyValue; {
                 map(abbreviation_only, |v| vec!(v)),
             ))
         ),
-        |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1.into())
+        |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1)
     )(input)
 });
 
@@ -290,7 +290,7 @@ def_parser!(bib_tags(input) -> Vec<KeyValue>; {
                     map(abbreviation_only, |v| vec![v]),
                 ))
             ),
-            |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1.into())
+            |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1)
         )
     )(input)
 });
@@ -310,7 +310,7 @@ def_parser!(bibliography_entry(input) -> Entry; {
         opt(pws!(_char(','))),
         pws!(_char('}'))
     );
-    Ok((rem, Entry::Bibliography(entry_t.into(), citation_key.into(), tags.into())))
+    Ok((rem, Entry::Bibliography(entry_t.into(), citation_key.into(), tags)))
 });
 
 // Handle a comment of the format:
