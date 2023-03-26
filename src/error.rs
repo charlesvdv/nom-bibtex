@@ -17,7 +17,7 @@ quick_error! {
 
 // We cannot use the from() from quick_error, because we need to put lifetimes that we didn't
 // define.
-impl<'a> From<Err<(&str, ErrorKind)>> for BibtexError {
+impl From<Err<(&str, ErrorKind)>> for BibtexError {
     fn from(err: Err<(&str, ErrorKind)>) -> BibtexError {
         let descr = match err {
             Err::Incomplete(e) => format!("Incomplete: {:?}", e),
