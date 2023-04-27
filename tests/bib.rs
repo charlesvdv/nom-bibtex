@@ -37,3 +37,21 @@ fn test_bib() {
     assert_eq!(b2.citation_key(), "knuthwebsite");
     assert_eq!(b2.tags()["author"], "Donald Knuth");
 }
+
+#[test]
+fn test_lowercase() {
+    let bib_str = read_file("samples/test.bib");
+    let bibtex = Bibtex::parse(&bib_str).unwrap();
+
+    let entry = &bibtex.bibliographies()[3];
+    let tags = entry.tags();
+
+    assert_eq!(entry.citation_key(), "kobayashi2014differential");
+    // The sample entry uses "Author" rather than "author".
+    assert_eq!(tags["author"], "Kobayashi, Shoshichi");
+    assert!(tags.get("Author").is_none());
+    assert_eq!(
+        tags["title"],
+        "Differential geometry of complex vector bundles"
+    );
+}
