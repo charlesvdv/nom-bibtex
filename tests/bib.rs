@@ -65,3 +65,18 @@ fn test_huge_file() {
     // test just that the parsing goes through
     assert!(bibtex.is_ok());
 }
+
+#[test]
+fn test_concat() {
+    let bib_str = read_file("samples/test.bib");
+    let bibtex = Bibtex::parse(&bib_str).unwrap();
+
+    let entry = &bibtex.bibliographies()[4];
+    let tags = entry.tags();
+
+    assert_eq!(entry.citation_key(), "neukirch1999ant");
+    assert_eq!(
+        tags["title"],
+        "Algebraic Number Theory"
+    );
+}
