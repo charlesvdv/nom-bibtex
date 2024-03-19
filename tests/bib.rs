@@ -55,3 +55,13 @@ fn test_lowercase() {
         "Differential geometry of complex vector bundles"
     );
 }
+
+#[test]
+fn test_huge_file() {
+    // file borrowed from the CryptoBib project https://cryptobib.di.ens.fr/ as
+    // a realistic example of a huge bibtex file
+    let bib_str = read_file("samples/crypto.bib");
+    let bibtex = Bibtex::parse(&bib_str);
+    // test just that the parsing goes through
+    assert!(bibtex.is_ok());
+}
