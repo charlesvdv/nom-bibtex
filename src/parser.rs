@@ -200,7 +200,8 @@ def_parser!(pub abbreviation_string(input) -> Vec<StringValueType>; {
         pws!(
             alt((
                 abbreviation_only,
-                map(quoted_string, |v: &str| StringValueType::Str(v.into()))
+                map(quoted_string, |v: &str| StringValueType::Str(v.into())),
+                map(bracketed_string, |v: &str| StringValueType::Str(v.into()))
             ))
         )
     )(input)
