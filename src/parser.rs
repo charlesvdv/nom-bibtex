@@ -360,16 +360,14 @@ def_parser!(entry(input) -> Entry; {
 
 // Parses a whole bibtex file to yield a list of entries
 def_parser!(pub entries(input) -> Vec<Entry>; {
-    if input.fragment().trim().is_empty() {
-        Ok((input, vec!()))
+    let mut data = input;
+    let mut entry_list = vec!();
+    while !data.fragment().trim().is_empty() {
+        let (rest_slice, new_entry) = entry(data)?;
+        entry_list.push(new_entry);
+        data = rest_slice;
     }
-    else {
-        let (rest_slice, new_entry) = entry(input)?;
-        let (remaining_slice, mut rest_entries) = entries(rest_slice)?;
-        // NOTE: O(n) insertions, could cause issues in the future
-        rest_entries.insert(0, new_entry);
-        Ok((remaining_slice, rest_entries))
-    }
+    Ok((data,entry_list))
 });
 
 #[cfg(test)]
