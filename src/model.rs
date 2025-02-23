@@ -1,7 +1,7 @@
 use crate::error::BibtexError;
 use crate::parser;
 use crate::parser::{mkspan, Entry, Span};
-use nom::error::VerboseError;
+use nom_language::error::VerboseError;
 use std::collections::HashMap;
 use std::result;
 use std::str;

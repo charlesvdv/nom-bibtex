@@ -59,7 +59,6 @@
 //! }
 //! ```
 //!
-extern crate nom;
 extern crate quick_error;
 
 pub mod error;
