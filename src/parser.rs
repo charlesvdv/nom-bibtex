@@ -25,7 +25,7 @@ use nom_tracable::TracableInfo;
 use std::num::NonZeroUsize;
 use std::str;
 
-const NEEDED_ONE: nom::Needed = nom::Needed::Size(unsafe { NonZeroUsize::new_unchecked(1) });
+const NEEDED_ONE: nom::Needed = nom::Needed::Size(NonZeroUsize::new(1).unwrap());
 
 pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
 pub fn mkspan(s: &str) -> Span<'_> {
