@@ -6,26 +6,26 @@
 // // that macros are use inside of each others..
 //
 use crate::model::{KeyValue, StringValueType};
+use nom::IResult;
 use nom::character::complete::char as _char;
 use nom::error::ParseError;
-use nom::IResult;
 use nom::{
+    AsChar, Parser,
     branch::alt,
     bytes::complete::{is_not, take_until, take_while1},
     character::complete::{digit1, multispace0},
     combinator::{map, opt, peek},
     multi::{separated_list0, separated_list1},
     sequence::{delimited, preceded, separated_pair},
-    AsChar, Parser,
 };
 use nom_locate::LocatedSpan;
+use nom_tracable::TracableInfo;
 #[cfg(feature = "trace")]
 use nom_tracable::tracable_parser;
-use nom_tracable::TracableInfo;
 use std::num::NonZeroUsize;
 use std::str;
 
-const NEEDED_ONE: nom::Needed = nom::Needed::Size(unsafe { NonZeroUsize::new_unchecked(1) });
+const NEEDED_ONE: nom::Needed = nom::Needed::Size(NonZeroUsize::new(1).unwrap());
 
 pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
 pub fn mkspan(s: &str) -> Span<'_> {
