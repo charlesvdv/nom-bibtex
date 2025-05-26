@@ -15,8 +15,8 @@ use nom::{
     character::complete::{digit1, multispace0},
     combinator::{map, opt, peek},
     multi::{separated_list0, separated_list1},
-    sequence::{delimited, preceded, separated_pair, tuple},
-    AsChar, Slice,
+    sequence::{delimited, preceded, separated_pair},
+    AsChar, Parser,
 };
 use nom_locate::LocatedSpan;
 #[cfg(feature = "trace")]
@@ -97,11 +97,11 @@ macro_rules! optional_ident {
 */
 macro_rules! chain_parsers {
     ($input:ident, $rest:ident; $( $parser:expr $(=> $name:ident)? ),+) => {
-        let mut parser = tuple(( $( $parser ),* ));
+        let mut parser = ( $( $parser ),* );
         let (
             $rest,
             ( $( optional_ident!($($name)?) ),* )
-        ) = parser($input)?;
+        ) = parser.parse($input)?;
     };
 }
 
@@ -111,11 +111,11 @@ fn span_to_str(span: Span<'_>) -> &str {
 }
 
 // Parses a single identifier
-def_parser!(ident(input) -> &str; {
+def_parser!(ident(input) -> &'a str; {
     map(
         take_while1(|c: char| c.is_alphanum() || c == '_' || c == '-'),
         span_to_str
-    )(input)
+    ).parse(input)
 });
 
 // Parses an abbreviation: An identifier that can be surrounded by whitespace
@@ -123,11 +123,11 @@ def_parser!(abbreviation_only(input) -> StringValueType; {
     map(
         dws!(ident),
         |v| StringValueType::Abbreviation(v.into())
-    )(input)
+    ).parse(input)
 });
 
 // Only used for bibliography tags.
-def_parser!(bracketed_string(input) -> &str; {
+def_parser!(bracketed_string(input) -> &'a str; {
     // We are not in a bracketed_string.
     match input.fragment().chars().next() {
         Some('{') => {},
@@ -155,12 +155,12 @@ def_parser!(bracketed_string(input) -> &str; {
         }
     }
     Ok((
-        input.slice(last_idx..),
-        span_to_str(input.slice(1..last_idx-1)).trim()
+        input[last_idx..].into(),
+        span_to_str(input[1..last_idx-1].into()).trim()
     ))
 });
 
-def_parser!(quoted_string(input) -> &str; {
+def_parser!(quoted_string(input) -> &'a str; {
     match input.fragment().chars().next() {
         Some('"') => {},
         Some(_) => {
@@ -189,8 +189,8 @@ def_parser!(quoted_string(input) -> &str; {
         }
     }
     Ok((
-        input.slice(last_idx..),
-        span_to_str(input.slice(1..last_idx-1))
+        input[last_idx..].into(),
+        span_to_str(input[1..last_idx-1].into())
     ))
 });
 
@@ -204,19 +204,19 @@ def_parser!(pub abbreviation_string(input) -> Vec<StringValueType>; {
                 map(bracketed_string, |v: &str| StringValueType::Str(v.into()))
             ))
         )
-    )(input)
+    ).parse(input)
 });
 
 // Parse a bibtex entry type which looks like:
 // @type{ ...
 //
 // But don't consume the last bracket.
-def_parser!(entry_type(input) -> &str; {
+def_parser!(entry_type(input) -> &'a str; {
     delimited(
         pws!(_char('@')),
         pws!(ident),
         pws!(peek(alt((_char('{'), _char('(')))))
-    )(input)
+    ).parse(input)
 });
 
 // Parse key value pair which has the form:
@@ -233,7 +233,7 @@ def_parser!(variable_key_value_pair(input) -> KeyValue; {
             ))
         ),
         |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1)
-    )(input)
+    ).parse(input)
 });
 
 // String variable can be delimited by brackets or parenthesis.
@@ -249,7 +249,7 @@ def_parser!(handle_variable(input) -> KeyValue; {
             dws!(variable_key_value_pair),
             peek(_char(')'))
         )
-    ))(input)
+    )).parse(input)
 });
 
 // Handle a string variable from the bibtex format:
@@ -293,7 +293,7 @@ def_parser!(bib_tags(input) -> Vec<KeyValue>; {
             ),
             |v: (&str, Vec<StringValueType>)| KeyValue::new(v.0.into(), v.1)
         )
-    )(input)
+    ).parse(input)
 });
 
 // Handle a bibliography entry of the format:
@@ -326,8 +326,8 @@ def_parser!(type_comment(input) -> Entry; {
 
 // Same as entry_type but with peek so it doesn't consume the
 // entry type.
-def_parser!(peeked_entry_type(input) -> &str; {
-    peek(entry_type)(input)
+def_parser!(peeked_entry_type(input) -> &'a str; {
+    peek(entry_type).parse(input)
 });
 
 // Parse any entry which starts with a @.
@@ -343,8 +343,8 @@ def_parser!(entry_with_type(input) -> Entry; {
 });
 
 // Handle data beginning without an @ which are considered comments.
-def_parser!(no_type_comment(input) -> &str; {
-    map(is_not("@"), span_to_str)(input)
+def_parser!(no_type_comment(input) -> &'a str; {
+    map(is_not("@"), span_to_str).parse(input)
 });
 
 // Parse any entry in a bibtex file.
@@ -356,7 +356,7 @@ def_parser!(entry(input) -> Entry; {
             entry_with_type,
             map(no_type_comment, |v| Entry::Comment(v.to_string().trim().into()))
         ))
-    )(input)
+    ).parse(input)
 });
 
 // Parses a whole bibtex file to yield a list of entries

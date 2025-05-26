@@ -1,6 +1,7 @@
 use crate::parser::Span;
-use nom::error::{convert_error, ErrorKind, VerboseError};
+use nom::error::ErrorKind;
 use nom::Err;
+use nom_language::error::{convert_error, VerboseError};
 use quick_error::quick_error;
 
 quick_error! {

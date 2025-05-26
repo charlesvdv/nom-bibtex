@@ -75,8 +75,5 @@ fn test_concat() {
     let tags = entry.tags();
 
     assert_eq!(entry.citation_key(), "neukirch1999ant");
-    assert_eq!(
-        tags["title"],
-        "Algebraic Number Theory"
-    );
+    assert_eq!(tags["title"], "Algebraic Number Theory");
 }
