@@ -10,7 +10,7 @@ keywords = ["bibtex", "latex", "parser", "nom"]
 repository = "https://github.com/charlesvdv/nom-bibtex"
 documentation = "https://docs.rs/nom-bibtex"
 
-edition = "2021"
+edition = "2024"
 
 license = "MIT"
 

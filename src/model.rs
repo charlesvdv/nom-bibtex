@@ -1,6 +1,6 @@
 use crate::error::BibtexError;
 use crate::parser;
-use crate::parser::{mkspan, Entry, Span};
+use crate::parser::{Entry, Span, mkspan};
 use nom_language::error::VerboseError;
 use std::collections::HashMap;
 use std::result;
