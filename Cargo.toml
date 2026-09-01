@@ -20,10 +20,8 @@ name = "nom_bibtex"
 [dependencies]
 nom = "8.0"
 quick-error = "2.0"
-nom-tracable = "0.9"
 nom_locate = "5.0"
 nom-language = "0.1"
 
 [features]
 default = []
-trace = ["nom-tracable/trace"]
