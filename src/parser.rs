@@ -19,17 +19,14 @@ use nom::{
     sequence::{delimited, preceded, separated_pair},
 };
 use nom_locate::LocatedSpan;
-use nom_tracable::TracableInfo;
-#[cfg(feature = "trace")]
-use nom_tracable::tracable_parser;
 use std::num::NonZeroUsize;
 use std::str;
 
 const NEEDED_ONE: nom::Needed = nom::Needed::Size(NonZeroUsize::new(1).unwrap());
 
-pub type Span<'a> = LocatedSpan<&'a str, TracableInfo>;
+pub type Span<'a> = LocatedSpan<&'a str>;
 pub fn mkspan(s: &str) -> Span<'_> {
-    Span::new_extra(s, TracableInfo::new())
+    Span::new(s)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -45,9 +42,6 @@ macro_rules! def_parser {
     ($vis:vis $name:ident(
         $input_name:ident$(,)? $($arg:ident, $type:ty),*
     ) -> $ret:ty; $body:tt) => {
-        // NOTE: Hidden behind feature gate because error messages are terrible
-        // with this directive included
-        #[cfg_attr(feature = "trace", tracable_parser)]
         $vis fn $name<'a, E> (
             $input_name: Span<'a>, $($arg: $ty),*
         ) -> IResult<Span<'a>, $ret, E>
